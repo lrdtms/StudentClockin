@@ -1,0 +1,128 @@
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using StudentLog.Application.Interfaces;
+using StudentLog.Core.Models;
+using StudentLog.UI.Messaging;
+using System.Collections.ObjectModel;
+
+namespace StudentLog.UI.ViewModels;
+
+public class CheckInSessionViewModel : ObservableObject
+{
+    private readonly ICohortService _cohortService;
+    private readonly ISessionStateService _sessionStateService;
+    private readonly INfcService _nfcService;
+    private readonly IAttendanceService _attendanceService;
+
+    public ObservableCollection<Cohort> Cohorts { get; } = new();
+    public IReadOnlyList<SessionType> SessionTypes { get; } = new[] { SessionType.ClockIn, SessionType.ClockOut };
+
+    private Cohort? _selectedCohort;
+    public Cohort? SelectedCohort
+    {
+        get => _selectedCohort;
+        set => SetProperty(ref _selectedCohort, value);
+    }
+
+    private SessionType _selectedSessionType = SessionType.ClockIn;
+    public SessionType SelectedSessionType
+    {
+        get => _selectedSessionType;
+        set => SetProperty(ref _selectedSessionType, value);
+    }
+
+    private bool _isSessionActive;
+    public bool IsSessionActive
+    {
+        get => _isSessionActive;
+        set => SetProperty(ref _isSessionActive, value);
+    }
+
+    private string _statusMessage = "Select cohort and start a session.";
+    public string StatusMessage
+    {
+        get => _statusMessage;
+        set => SetProperty(ref _statusMessage, value);
+    }
+
+    private string _lastScannedStudentName = string.Empty;
+    public string LastScannedStudentName
+    {
+        get => _lastScannedStudentName;
+        set => SetProperty(ref _lastScannedStudentName, value);
+    }
+
+    private DateTime _selectedDate = DateTime.Today;
+    public DateTime SelectedDate
+    {
+        get => _selectedDate;
+        set => SetProperty(ref _selectedDate, value);
+    }
+
+    public IAsyncRelayCommand LoadCommand { get; }
+    public IAsyncRelayCommand StartSessionCommand { get; }
+    public IAsyncRelayCommand StopSessionCommand { get; }
+
+    public CheckInSessionViewModel(ICohortService cohortService, ISessionStateService sessionStateService, INfcService nfcService, IAttendanceService attendanceService)
+    {
+        _cohortService = cohortService;
+        _sessionStateService = sessionStateService;
+        _nfcService = nfcService;
+        _attendanceService = attendanceService;
+
+        LoadCommand = new AsyncRelayCommand(LoadAsync);
+        StartSessionCommand = new AsyncRelayCommand(StartSessionAsync);
+        StopSessionCommand = new AsyncRelayCommand(StopSessionAsync);
+    }
+
+    public async Task LoadAsync()
+    {
+        Cohorts.Clear();
+        var cohorts = await _cohortService.GetCohortsAsync();
+        foreach (var cohort in cohorts)
+        {
+            Cohorts.Add(cohort);
+        }
+    }
+
+    public async Task StartSessionAsync()
+    {
+        if (SelectedCohort is null)
+        {
+            StatusMessage = "Please select a cohort.";
+            return;
+        }
+
+        _sessionStateService.StartSession(SelectedCohort.Id, SelectedSessionType, DateOnly.FromDateTime(SelectedDate));
+        IsSessionActive = true;
+        StatusMessage = $"{SelectedSessionType} session started for {SelectedCohort.Name}.";
+        LastScannedStudentName = string.Empty;
+
+        await _nfcService.StartListeningAsync(async uid =>
+        {
+            var result = await _attendanceService.RecordScanAsync(SelectedSessionType, uid);
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (result.IsSuccess && result.Student is not null)
+                {
+                    StatusMessage = $"Recorded {SelectedSessionType} for {result.Student.Name} {result.Student.Surname}.";
+                    LastScannedStudentName = $"Scanned: {result.Student.Name} {result.Student.Surname}";
+                    WeakReferenceMessenger.Default.Send(new AttendanceRecordedMessage(result.Student.CohortId, result.Timestamp ?? DateTime.Now));
+                    return;
+                }
+
+                StatusMessage = result.Message;
+                LastScannedStudentName = string.Empty;
+            });
+        });
+    }
+
+    public async Task StopSessionAsync()
+    {
+        await _nfcService.StopListeningAsync();
+        _sessionStateService.StopSession();
+        IsSessionActive = false;
+        StatusMessage = "Session stopped.";
+    }
+}

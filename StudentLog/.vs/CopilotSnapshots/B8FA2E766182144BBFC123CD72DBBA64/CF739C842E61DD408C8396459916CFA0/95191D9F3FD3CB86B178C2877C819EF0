@@ -1,0 +1,267 @@
+﻿using StudentLog.Application.Interfaces;
+using Windows.Devices.Enumeration;
+using Windows.Devices.SmartCards;
+using Windows.Security.Cryptography;
+using Windows.Storage.Streams;
+
+namespace StudentLog.Infrastructure.Services;
+
+public class NfcService : INfcService
+{
+    private const int DefaultScanTimeoutSeconds = 10;
+    private CancellationTokenSource? _listeningCts;
+    private Task? _listeningTask;
+
+    public bool IsListening { get; private set; }
+
+    public Task StartListeningAsync(Func<string, Task> onUidScanned, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _listeningCts?.Cancel();
+            _listeningCts?.Dispose();
+            _listeningCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            IsListening = true;
+
+            System.Diagnostics.Debug.WriteLine($"[NFC] Starting listener");
+
+            _listeningTask = Task.Run(async () =>
+            {
+                try
+                {
+                    string? lastUid = null;
+                    int failureCount = 0;
+
+                    while (!_listeningCts.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            // Use 5 second timeout per attempt for reader operations
+                            var uid = await TryReadUidFromAcr122uAsync(TimeSpan.FromSeconds(5), _listeningCts.Token);
+                            failureCount = 0; // Reset failure counter on success
+
+                            if (!string.IsNullOrWhiteSpace(uid))
+                            {
+                                if (uid != lastUid)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"[NFC] New card - UID: {uid}");
+                                    lastUid = uid;
+                                    try
+                                    {
+                                        await onUidScanned(uid);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error in onUidScanned callback: {ex.GetType().Name} - {ex.Message}");
+                                    }
+                                }
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[NFC] Listening cancelled");
+                            break;
+                        }
+                        catch (Exception ex)
+                        {
+                            failureCount++;
+                            System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error during scan: {ex.GetType().Name} - {ex.Message}");
+
+                            // Stop after 5 consecutive failures
+                            if (failureCount >= 5)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Too many failures, stopping listener");
+                                break;
+                            }
+
+                            // Keep listener alive
+                            try
+                            {
+                                await Task.Delay(500, _listeningCts.Token);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Fatal error in listener loop: {ex.GetType().Name} - {ex.Message}");
+                }
+                finally
+                {
+                    IsListening = false;
+                    System.Diagnostics.Debug.WriteLine($"[NFC] Listener stopped");
+                }
+            }, _listeningCts.Token);
+
+            return Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error starting listener: {ex.GetType().Name} - {ex.Message}");
+            IsListening = false;
+            throw;
+        }
+    }
+
+    public Task StopListeningAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            System.Diagnostics.Debug.WriteLine($"[NFC] Stopping listener");
+            _listeningCts?.Cancel();
+
+            // Wait for the listening task to complete gracefully
+            if (_listeningTask is not null && !_listeningTask.IsCompleted)
+            {
+                try
+                {
+                    _listeningTask.Wait(TimeSpan.FromSeconds(2));
+                }
+                catch (AggregateException ex)
+                {
+                    // Ignore task cancellation exceptions
+                    if (!ex.InnerExceptions.All(e => e is OperationCanceledException or TaskCanceledException))
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error waiting for listener to stop: {ex.GetType().Name}");
+                    }
+                }
+            }
+
+            _listeningCts?.Dispose();
+            _listeningCts = null;
+            _listeningTask = null;
+            IsListening = false;
+            System.Diagnostics.Debug.WriteLine($"[NFC] Listener stopped successfully");
+            return Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error stopping listener: {ex.GetType().Name} - {ex.Message}");
+            IsListening = false;
+            return Task.CompletedTask;
+        }
+    }
+
+    public async Task<string?> ScanSingleUidAsync(CancellationToken cancellationToken = default)
+    {
+        IsListening = true;
+        try
+        {
+            var uid = await TryReadUidFromAcr122uAsync(TimeSpan.FromSeconds(DefaultScanTimeoutSeconds), cancellationToken);
+            if (!string.IsNullOrWhiteSpace(uid))
+            {
+                return uid;
+            }
+
+            var manualUid = await MainThread.InvokeOnMainThreadAsync(async () =>
+                await Microsoft.Maui.Controls.Application.Current!.Windows[0].Page!.DisplayPromptAsync(
+                    "Scan NFC",
+                    "No UID was detected from ACR122U. Scan again or enter UID manually.",
+                    "Save",
+                    "Cancel",
+                    "UID"));
+
+            return string.IsNullOrWhiteSpace(manualUid) ? null : manualUid.Trim();
+        }
+        finally
+        {
+            IsListening = false;
+        }
+    }
+
+    private static async Task<string?> TryReadUidFromAcr122uAsync(TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // For continuous listening, don't apply timeout - just use the external cancellationToken
+            // The timeout parameter is ignored for continuous listening mode
+            var ct = cancellationToken;
+
+            var selector = SmartCardReader.GetDeviceSelector();
+            var devices = await DeviceInformation.FindAllAsync(selector);
+
+            var readers = new List<SmartCardReader>();
+            foreach (var device in devices)
+            {
+                try
+                {
+                    var reader = await SmartCardReader.FromIdAsync(device.Id);
+                    if (reader is not null)
+                    {
+                        readers.Add(reader);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error getting reader from device: {ex.GetType().Name}");
+                }
+            }
+
+            if (readers.Count == 0)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NFC] ✗ No smart card readers found");
+                return null;
+            }
+
+            var targetReader = readers.FirstOrDefault(r =>
+                r.Name.Contains("ACR122", StringComparison.OrdinalIgnoreCase) ||
+                r.Name.Contains("ACS", StringComparison.OrdinalIgnoreCase));
+
+            if (targetReader is null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NFC] ✗ No ACR122U/ACS reader found. Available readers: {string.Join(", ", readers.Select(r => r.Name))}");
+                return null;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[NFC] Using reader: {targetReader.Name}");
+
+            try
+            {
+                var cards = await targetReader.FindAllCardsAsync();
+                if (cards.Count > 0)
+                {
+                    var card = cards[0];
+                    using var connection = await card.ConnectAsync();
+
+                    var command = new byte[] { 0xFF, 0xCA, 0x00, 0x00, 0x00 };
+                    var requestBuffer = CryptographicBuffer.CreateFromByteArray(command);
+                    var response = await connection.TransmitAsync(requestBuffer);
+                    CryptographicBuffer.CopyToByteArray(response, out var responseBytes);
+
+                    if (responseBytes.Length >= 2)
+                    {
+                        var sw1 = responseBytes[^2];
+                        var sw2 = responseBytes[^1];
+                        if (sw1 == 0x90 && sw2 == 0x00 && responseBytes.Length > 2)
+                        {
+                            var uidBytes = responseBytes[..^2];
+                            var uid = Convert.ToHexString(uidBytes);
+                            System.Diagnostics.Debug.WriteLine($"[NFC] ✓ Card detected - UID: {uid}");
+                            return uid;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error reading card: {ex.GetType().Name} - {ex.Message}");
+            }
+
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            System.Diagnostics.Debug.WriteLine($"[NFC] Scan cancelled");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error in TryReadUidFromAcr122uAsync: {ex.GetType().Name} - {ex.Message}");
+            return null;
+        }
+    }
+}

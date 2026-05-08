@@ -1,0 +1,55 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:viewModels="clr-namespace:StudentLog.UI.ViewModels"
+             x:Class="StudentLog.UI.Views.CheckInSessionPage"
+             x:DataType="viewModels:CheckInSessionViewModel"
+             Title="Check-In Sessions">
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="12">
+            <!-- Session Status Display -->
+            <Frame Padding="12" BackgroundColor="Transparent" BorderColor="#4db8e8" CornerRadius="8">
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="Session Status" FontAttributes="Bold" FontSize="14" TextColor="White" />
+                    <Label Text="{Binding IsSessionActive, StringFormat='Active: {0}'}" TextColor="White" FontSize="12" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Cohort Selection -->
+            <Label Text="Cohort" TextColor="White" />
+            <Picker Title="Select cohort"
+                    ItemsSource="{Binding Cohorts}"
+                    ItemDisplayBinding="{Binding Name}"
+                    SelectedItem="{Binding SelectedCohort}"
+                    BackgroundColor="Transparent"
+                    TextColor="White" />
+
+            <!-- Session Type Selection -->
+            <Label Text="Session Type" TextColor="White" />
+            <Picker Title="Select session"
+                    SelectedIndex="0"
+                    ItemsSource="{Binding SessionTypes}"
+                    SelectedItem="{Binding SelectedSessionType}"
+                    BackgroundColor="Transparent"
+                    TextColor="White" />
+
+            <!-- Date Selection -->
+            <Label Text="Date" TextColor="White" />
+            <DatePicker Date="{Binding SelectedDate}" BackgroundColor="Transparent" TextColor="White" />
+
+            <!-- Session Control Buttons -->
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                <Button Grid.Column="0" Text="Start Session" Command="{Binding StartSessionCommand}" />
+                <Button Grid.Column="1" Text="Stop Session" Command="{Binding StopSessionCommand}" />
+            </Grid>
+
+            <!-- Last Scanned Student -->
+            <Frame Padding="12" BackgroundColor="Transparent" BorderColor="#4db8e8" CornerRadius="8" IsVisible="{Binding LastScannedStudentName, Converter={StaticResource StringToBoolConverter}}">
+                <Label Text="{Binding LastScannedStudentName}" TextColor="#90EE90" FontAttributes="Bold" FontSize="14" />
+            </Frame>
+
+            <!-- Status Messages -->
+            <Label Text="{Binding StatusMessage}" TextColor="White" FontSize="12" LineBreakMode="WordWrap" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

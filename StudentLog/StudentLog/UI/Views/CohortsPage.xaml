@@ -1,0 +1,71 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:viewModels="clr-namespace:StudentLog.UI.ViewModels"
+             xmlns:models="clr-namespace:StudentLog.Core.Models"
+             x:Class="StudentLog.UI.Views.CohortsPage"
+             x:DataType="viewModels:CohortsViewModel"
+             Title="Cohorts">
+    <Grid RowDefinitions="Auto,*" ColumnDefinitions="*">
+        <ScrollView Grid.Row="0">
+            <VerticalStackLayout Padding="16" Spacing="12">
+                <Label Text="Add New Cohort" FontAttributes="Bold" FontSize="16" TextColor="White" />
+                <Entry Placeholder="Cohort name" Text="{Binding NewCohortName}" BackgroundColor="Transparent" TextColor="White" PlaceholderColor="#999999" />
+                <Button Text="Add Cohort" Command="{Binding AddCohortCommand}" />
+
+                <Label Text="Select Cohort" FontAttributes="Bold" FontSize="16" Margin="0,16,0,0" TextColor="White" />
+                <CollectionView ItemsSource="{Binding Cohorts}" SelectionMode="Single" SelectedItem="{Binding SelectedCohort}">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="models:Cohort">
+                            <Frame Padding="8" BackgroundColor="Transparent" Margin="0,2" BorderColor="#4db8e8" CornerRadius="4">
+                                <Label Text="{Binding Name}" FontSize="14" TextColor="White" />
+                            </Frame>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <Label Text="Attendance Records" FontAttributes="Bold" FontSize="16" Margin="0,16,0,0" TextColor="White" />
+
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" Padding="0,0,0,8">
+                    <Label Grid.Column="0" Text="Filter:" VerticalOptions="Center" TextColor="White" />
+                    <Picker Grid.Column="1"
+                            ItemsSource="{Binding SessionFilterScopes}"
+                            SelectedItem="{Binding SelectedSessionFilterScope}"
+                            BackgroundColor="Transparent"
+                            TextColor="White" />
+                </Grid>
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <DatePicker Grid.Column="0" Date="{Binding SelectedSessionDate}" BackgroundColor="Transparent" TextColor="White" />
+                    <Button Grid.Column="1" Text="Export CSV" Command="{Binding ExportCsvCommand}" VerticalOptions="Center" />
+                </Grid>
+
+                <Label Text="{Binding StatusMessage}" TextColor="White" />
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <CollectionView Grid.Row="1" ItemsSource="{Binding Students}" VerticalOptions="FillAndExpand" Margin="16,8,16,16">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="models:Student">
+                    <Frame Padding="12" Margin="0,4" BackgroundColor="Transparent" BorderColor="#4db8e8" CornerRadius="8">
+                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" ColumnSpacing="10" RowSpacing="5">
+                            <StackLayout Grid.Row="0" Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                <Label Text="{Binding Name}" FontAttributes="Bold" FontSize="16" TextColor="White" />
+                                <Label Text="{Binding Surname}" FontSize="14" TextColor="White" />
+                            </StackLayout>
+
+                            <StackLayout Grid.Row="0" Grid.Column="1" Spacing="5" VerticalOptions="Center">
+                                <Label Text="{Binding SignInTime, Converter={StaticResource SignInStatusConverter}}" FontAttributes="Bold" FontSize="14" TextColor="White" />
+                            </StackLayout>
+
+                            <StackLayout Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Spacing="3" Margin="0,5,0,0">
+                                <Label Text="{Binding SignInTime, StringFormat='Sign In: {0:yyyy-MM-dd HH:mm}'}" FontSize="12" TextColor="#CCCCCC" />
+                                <Label Text="{Binding SignOutTime, StringFormat='Sign Out: {0:yyyy-MM-dd HH:mm}'}" FontSize="12" TextColor="#CCCCCC" />
+                            </StackLayout>
+                        </Grid>
+                    </Frame>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+</ContentPage>

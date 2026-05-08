@@ -1,0 +1,122 @@
+using StudentLog.Application.Interfaces;
+using StudentLog.Core.Interfaces.Repositories;
+using StudentLog.Core.Models;
+
+namespace StudentLog.Application.Services;
+
+public class StudentService : IStudentService
+{
+    private readonly IStudentRepository _studentRepository;
+
+    public StudentService(IStudentRepository studentRepository)
+    {
+        _studentRepository = studentRepository;
+    }
+
+    public Task<IReadOnlyList<Student>> GetStudentsAsync(int? cohortId = null, CancellationToken cancellationToken = default)
+    {
+        return _studentRepository.GetAllAsync(cohortId, cancellationToken);
+    }
+
+    public Task<Student?> GetStudentByIdAsync(int studentId, CancellationToken cancellationToken = default)
+    {
+        return _studentRepository.GetByIdAsync(studentId, cancellationToken);
+    }
+
+    public async Task<int> AddStudentAsync(string name, string surname, string uid, int cohortId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException("Name is required.", nameof(name));
+        }
+
+        if (string.IsNullOrWhiteSpace(surname))
+        {
+            throw new ArgumentException("Surname is required.", nameof(surname));
+        }
+
+        if (string.IsNullOrWhiteSpace(uid))
+        {
+            throw new ArgumentException("UID is required.", nameof(uid));
+        }
+
+        if (cohortId <= 0)
+        {
+            throw new ArgumentException("Cohort must be selected.", nameof(cohortId));
+        }
+
+        var student = new Student
+        {
+            Name = name.Trim(),
+            Surname = surname.Trim(),
+            UID = uid.Trim(),
+            CohortId = cohortId
+        };
+
+        return await _studentRepository.AddAsync(student, cancellationToken);
+    }
+
+    public async Task<int> DeleteStudentAsync(int studentId, CancellationToken cancellationToken = default)
+    {
+        if (studentId <= 0)
+        {
+            throw new ArgumentException("Student ID must be valid.", nameof(studentId));
+        }
+
+        return await _studentRepository.DeleteAsync(studentId, cancellationToken);
+    }
+
+    public async Task<int> UpdateStudentAsync(Student student, CancellationToken cancellationToken = default)
+    {
+        if (student.Id <= 0)
+        {
+            throw new ArgumentException("Student ID must be valid.", nameof(student));
+        }
+
+        if (string.IsNullOrWhiteSpace(student.Name))
+        {
+            throw new ArgumentException("Name is required.", nameof(student));
+        }
+
+        if (string.IsNullOrWhiteSpace(student.Surname))
+        {
+            throw new ArgumentException("Surname is required.", nameof(student));
+        }
+
+        if (string.IsNullOrWhiteSpace(student.UID))
+        {
+            throw new ArgumentException("UID is required.", nameof(student));
+        }
+
+        if (student.CohortId <= 0)
+        {
+            throw new ArgumentException("Cohort must be valid.", nameof(student));
+        }
+
+        student.Name = student.Name.Trim();
+        student.Surname = student.Surname.Trim();
+        student.UID = student.UID.Trim().ToUpperInvariant();
+
+        return await _studentRepository.UpdateAsync(student, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Student>> GetStudentsForDateAsync(int cohortId, DateOnly sessionDate, CancellationToken cancellationToken = default)
+    {
+        if (cohortId <= 0)
+        {
+            throw new ArgumentException("Cohort must be selected.", nameof(cohortId));
+        }
+
+        return await _studentRepository.GetByCohortAndDateAsync(cohortId, sessionDate, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<AttendanceRecord>> GetAttendanceHistoryAsync(int studentId, CancellationToken cancellationToken = default)
+    {
+        if (studentId <= 0)
+        {
+            throw new ArgumentException("Student ID must be valid.", nameof(studentId));
+        }
+
+        return await _studentRepository.GetAttendanceHistoryAsync(studentId, cancellationToken);
+    }
+}

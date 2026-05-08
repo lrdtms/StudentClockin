@@ -1,0 +1,156 @@
+﻿using MySqlConnector;
+using StudentLog.Core.Interfaces.Repositories;
+using StudentLog.Core.Models;
+using StudentLog.Infrastructure.Data;
+
+namespace StudentLog.Infrastructure.Repositories;
+
+public class StudentRepository : IStudentRepository
+{
+    private readonly IDbConnectionFactory _connectionFactory;
+
+    public StudentRepository(IDbConnectionFactory connectionFactory)
+    {
+        _connectionFactory = connectionFactory;
+    }
+
+    public async Task<IReadOnlyList<Student>> GetAllAsync(int? cohortId = null, CancellationToken cancellationToken = default)
+    {
+        var result = new List<Student>();
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+
+        var sql = "SELECT Id, UID, cohortId, SignInTime, SignOutTime, name, surname FROM student";
+        if (cohortId.HasValue)
+        {
+            sql += " WHERE cohortId = @cohortId";
+        }
+
+        sql += " ORDER BY surname, name;";
+
+        await using var command = new MySqlCommand(sql, connection);
+        if (cohortId.HasValue)
+        {
+            command.Parameters.AddWithValue("@cohortId", cohortId.Value);
+        }
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            result.Add(MapStudent(reader));
+        }
+
+        return result;
+    }
+
+    public async Task<IReadOnlyList<Student>> GetByCohortAsync(int cohortId, CancellationToken cancellationToken = default)
+    {
+        return await GetAllAsync(cohortId, cancellationToken);
+    }
+
+    public async Task<Student?> GetByUidAsync(string uid, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+        const string sql = "SELECT Id, UID, cohortId, SignInTime, SignOutTime, name, surname FROM student WHERE UID = @uid LIMIT 1;";
+
+        await using var command = new MySqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@uid", uid);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return MapStudent(reader);
+    }
+
+    public async Task<int> AddAsync(Student student, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+        const string sql = """
+            INSERT INTO student (UID, cohortId, SignInTime, SignOutTime, name, surname)
+            VALUES (@uid, @cohortId, @signInTime, @signOutTime, @name, @surname);
+            SELECT LAST_INSERT_ID();
+            """;
+
+        await using var command = new MySqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@uid", student.UID);
+        command.Parameters.AddWithValue("@cohortId", student.CohortId);
+        command.Parameters.AddWithValue("@signInTime", student.SignInTime);
+        command.Parameters.AddWithValue("@signOutTime", student.SignOutTime);
+        command.Parameters.AddWithValue("@name", student.Name);
+        command.Parameters.AddWithValue("@surname", student.Surname);
+
+        var id = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+        student.Id = id;
+        return id;
+    }
+
+    public async Task<int> UpdateAttendanceAsync(int studentId, DateTime? signInTime, DateTime? signOutTime, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+            const string sql = "UPDATE student SET SignInTime = @signInTime, SignOutTime = @signOutTime WHERE Id = @id;";
+
+            await using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@signInTime", signInTime ?? DBNull.Value);
+            command.Parameters.AddWithValue("@signOutTime", signOutTime ?? DBNull.Value);
+            command.Parameters.AddWithValue("@id", studentId);
+
+            System.Diagnostics.Debug.WriteLine($"[REPOSITORY] Executing UpdateAttendanceAsync for StudentId: {studentId}, SignInTime: {signInTime}, SignOutTime: {signOutTime}");
+
+            var rowsAffected = await command.ExecuteNonQueryAsync(cancellationToken);
+
+            System.Diagnostics.Debug.WriteLine($"[REPOSITORY] UpdateAttendanceAsync completed. Rows affected: {rowsAffected}");
+
+            return rowsAffected;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[REPOSITORY ERROR] Exception in UpdateAttendanceAsync: {ex.GetType().Name} - {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[REPOSITORY ERROR] Stack Trace: {ex.StackTrace}");
+            throw;
+        }
+    }
+
+    public async Task<int> DeleteAsync(int studentId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+        const string sql = "DELETE FROM student WHERE Id = @id;";
+
+        await using var command = new MySqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@id", studentId);
+
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<int> UpdateAsync(Student student, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+        const string sql = "UPDATE student SET UID = @uid, name = @name, surname = @surname, cohortId = @cohortId WHERE Id = @id;";
+
+        await using var command = new MySqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@uid", student.UID);
+        command.Parameters.AddWithValue("@name", student.Name);
+        command.Parameters.AddWithValue("@surname", student.Surname);
+        command.Parameters.AddWithValue("@cohortId", student.CohortId);
+        command.Parameters.AddWithValue("@id", student.Id);
+
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static Student MapStudent(MySqlDataReader reader)
+    {
+        return new Student
+        {
+            Id = reader.GetInt32("Id"),
+            UID = reader.GetString("UID"),
+            CohortId = reader.GetInt32("cohortId"),
+            SignInTime = reader.IsDBNull(reader.GetOrdinal("SignInTime")) ? null : reader.GetDateTime("SignInTime"),
+            SignOutTime = reader.IsDBNull(reader.GetOrdinal("SignOutTime")) ? null : reader.GetDateTime("SignOutTime"),
+            Name = reader.GetString("name"),
+            Surname = reader.GetString("surname")
+        };
+    }
+}

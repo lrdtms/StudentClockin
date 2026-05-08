@@ -1,0 +1,8 @@
+﻿using StudentLog.Core.Models;
+
+namespace StudentLog.Application.Interfaces;
+
+public interface IAttendanceService
+{
+    Task<bool> RecordScanAsync(SessionType sessionType, string uid, CancellationToken cancellationToken = default);
+}

@@ -1,0 +1,260 @@
+﻿# StudentLog Architecture
+
+## Source of Truth
+- All implementation decisions must comply with `Reference/checklist.md`.
+- This document is updated as features are added.
+
+## Overview
+**StudentLog** is a .NET MAUI attendance tracking application using NFC technology to scan student IDs. The application follows a **Layered MVVM Architecture** with clean separation of concerns across four main layers: Core, Application, Infrastructure, and UI.
+
+**Technology Stack:**
+- Framework: .NET MAUI 10
+- Platform: Windows desktop only (`net10.0-windows10.0.19041.0`)
+- Database: MySQL with MySqlConnector
+- NFC Hardware: ACR122U reader
+- UI Framework: MAUI XAML with MVVM pattern
+
+---
+
+## Architecture Style
+Layered MVVM architecture for .NET MAUI:
+
+Target runtime: **Windows desktop only** (`net10.0-windows10.0.19041.0`).
+
+### 1. **Core Layer** - Domain Models and Abstractions
+   - Domain models and repository interfaces.
+   - **No external dependencies** - framework-agnostic
+   - **Files:**
+     - `Core/Models/Cohort.cs` - Group/class of students
+     - `Core/Models/Student.cs` - Individual student with sign-in/out times
+     - `Core/Models/SessionType.cs` - Enumeration (ClockIn, ClockOut)
+     - `Core/Models/AttendanceScanResult.cs` - Result of NFC scan operations
+     - `Core/Interfaces/Repositories/ICohortRepository.cs`
+     - `Core/Interfaces/Repositories/IStudentRepository.cs`
+   - **Key Models:**
+     - **Cohort:** `Id`, `Name`
+     - **Student:** `Id`, `UID` (NFC tag), `CohortId`, `SignInTime`, `SignOutTime`, `Name`, `Surname`
+     - **SessionType:** `ClockIn`, `ClockOut`
+     - **AttendanceScanResult:** Status, error details, student info
+
+### 2. **Application Layer** - Business Logic and Services
+   - Service interfaces and business workflows - orchestration logic
+   - **No UI dependencies** - framework-agnostic
+   - **Files:**
+     - `Application/Interfaces/IAttendanceService.cs` - Attendance recording
+     - `Application/Interfaces/ICohortService.cs` - Cohort management
+     - `Application/Interfaces/ISessionStateService.cs` - Session state tracking
+     - `Application/Interfaces/IStudentService.cs` - Student management
+     - `Application/Interfaces/INfcService.cs` - NFC hardware abstraction
+     - `Application/Services/*.cs` - Concrete implementations
+   - **Responsibilities:**
+     - Cohort management (list, create)
+     - Student management (list, create)
+     - Session state (active cohort, active day, session flag)
+     - Attendance recording from NFC UID scans
+     - Business rule validation (session active, student in cohort)
+
+### 3. **Infrastructure Layer** - Technical Implementation
+   - MySQL data access and NFC hardware implementation
+   - **Database Details:**
+     - Host: `127.0.0.1:3307`
+     - Database: `student_logDb`
+     - Tables: `cohort`, `student`
+   - **Files:**
+     - `Infrastructure/Data/MySqlOptions.cs` - Connection configuration
+     - `Infrastructure/Data/IDbConnectionFactory.cs` - Connection abstraction
+     - `Infrastructure/Data/MySqlConnectionFactory.cs` - MySQL implementation
+     - `Infrastructure/Data/DatabaseInitializer.cs` - Schema initialization
+     - `Infrastructure/Repositories/CohortRepository.cs` - Implements `ICohortRepository`
+     - `Infrastructure/Repositories/StudentRepository.cs` - Implements `IStudentRepository`
+     - `Infrastructure/Services/NfcService.cs` - Implements `INfcService` for ACR122U
+   - **NFC Service Details:**
+     - Continuous polling mode: `StartListeningAsync()`
+     - Single read mode: `ScanSingleUidAsync()`
+     - ACR122U driver integration
+     - Duplicate detection (prevents multiple readings of same card)
+     - Error recovery with automatic stop after 10 consecutive errors
+     - Configurable timeout and polling intervals
+
+### 4. **UI Layer** - Presentation and User Interaction
+   - MAUI Views + MVVM ViewModels
+   - **MVVM Pattern:** Views bind to ViewModels via `BindingContext`
+   - **Files:**
+     - `UI/Views/CheckInSessionPage.xaml(.cs)` - NFC check-in/check-out operations
+     - `UI/Views/CohortsPage.xaml(.cs)` - Cohort selection and attendance display
+     - `UI/Views/StudentsPage.xaml(.cs)` - Student creation (add-only)
+     - `UI/ViewModels/CheckInSessionViewModel.cs` - Scan logic and session management
+     - `UI/ViewModels/CohortsViewModel.cs` - Cohort list and selection
+     - `UI/ViewModels/StudentsViewModel.cs` - Student creation
+     - `UI/Converters/*.cs` - Value converters for data binding
+     - `UI/Messaging/*.cs` - Cross-component messaging
+   - **Navigation:**
+     - Shell-based flyout in `AppShell.xaml`
+     - Routes: Check-In Sessions (home), Cohorts, Students
+
+## Dependency Injection
+Configured in `MauiProgram.cs`:
+- **Singleton services:** Stateful app services, repositories, infrastructure services, database initializer
+  - Ensures single instance across application lifetime
+  - Used for: database connection factory, repositories, business services
+- **Transient ViewModels and Pages:** New instance per request
+  - Fresh state for each navigation
+  - Prevents state leakage between pages
+
+**Service Registration Pattern:**
+```
+// Data Access
+builder.Services.AddSingleton<IDbConnectionFactory, MySqlConnectionFactory>();
+builder.Services.AddSingleton<DatabaseInitializer>();
+
+// Repositories
+builder.Services.AddSingleton<ICohortRepository, CohortRepository>();
+builder.Services.AddSingleton<IStudentRepository, StudentRepository>();
+
+// Application Services
+builder.Services.AddSingleton<ICohortService, CohortService>();
+builder.Services.AddSingleton<IStudentService, StudentService>();
+builder.Services.AddSingleton<IAttendanceService, AttendanceService>();
+builder.Services.AddSingleton<ISessionStateService, SessionStateService>();
+builder.Services.AddSingleton<INfcService, NfcService>();
+
+// UI (Transient)
+builder.Services.AddTransient<CheckInSessionViewModel>();
+builder.Services.AddTransient<CohortsViewModel>();
+builder.Services.AddTransient<StudentsViewModel>();
+builder.Services.AddTransient<CheckInSessionPage>();
+builder.Services.AddTransient<CohortsPage>();
+builder.Services.AddTransient<StudentsPage>();
+```
+
+---
+
+## Data Flow
+
+### Attendance Recording Flow
+```
+User scans NFC card
+        ↓
+NfcService detects UID
+        ↓
+UID passed to CheckInSessionViewModel
+        ↓
+ViewModel calls AttendanceService.RecordScanAsync()
+        ↓
+AttendanceService validates:
+  - Session is active
+  - Student exists in database
+  - Student belongs to active cohort
+        ↓
+Determines SessionType (ClockIn or ClockOut)
+        ↓
+StudentRepository.UpdateAttendanceAsync() updates database
+        ↓
+Returns AttendanceScanResult (success/failure with details)
+        ↓
+ViewModel updates UI with result
+        ↓
+AttendanceRecordedMessage sent for cross-component notification
+```
+
+### Cohort and Student Loading
+```
+User navigates to Cohorts page
+        ↓
+CohortsViewModel.LoadAsync() called
+        ↓
+ICohortService retrieves all cohorts
+        ↓
+CohortRepository queries: SELECT * FROM cohort
+        ↓
+Cohorts displayed in list
+        ↓
+User selects cohort → SessionStateService.SetActiveCohort()
+        ↓
+IStudentRepository loads students for selected cohort
+        ↓
+Attendance records filtered by session date scope
+```
+
+---
+
+## Dependency Graph
+
+```
+Presentation Layer (UI)
+├─ CheckInSessionPage
+│  └─ CheckInSessionViewModel
+│     ├─ INfcService (Application)
+│     ├─ IAttendanceService (Application)
+│     └─ ISessionStateService (Application)
+│
+├─ CohortsPage
+│  └─ CohortsViewModel
+│     ├─ ICohortService (Application)
+│     ├─ ISessionStateService (Application)
+│     └─ IStudentService (Application)
+│
+└─ StudentsPage
+   └─ StudentsViewModel
+      └─ IStudentService (Application)
+
+Application Layer (Services)
+├─ AttendanceService
+│  ├─ IStudentRepository (Core)
+│  └─ ISessionStateService (Application)
+│
+├─ CohortService
+│  └─ ICohortRepository (Core)
+│
+├─ StudentService
+│  └─ IStudentRepository (Core)
+│
+└─ SessionStateService (stateful)
+
+Infrastructure Layer
+├─ CohortRepository (implements ICohortRepository)
+│  └─ IDbConnectionFactory
+│     └─ MySqlConnectionFactory
+│
+├─ StudentRepository (implements IStudentRepository)
+│  └─ IDbConnectionFactory
+│
+└─ NfcService (implements INfcService)
+   └─ Windows.Devices.SmartCards API
+
+Core Layer (Models & Interfaces)
+├─ Domain Models: Cohort, Student, SessionType, AttendanceScanResult
+└─ Interfaces: ICohortRepository, IStudentRepository
+```
+
+---
+
+## Data Storage
+- MySQL database in a container.
+- Connection target:
+  - Host: `127.0.0.1`
+  - Port: `3307`
+  - Database: `student_logDb`
+- Tables ensured at startup to match provided structure:
+  - `cohort`
+  - `student`
+- Startup behavior:
+  - Database initialization runs asynchronously after the main window is created.
+  - App startup does not block on MySQL availability.
+
+## NFC Integration
+- `INfcService` defines NFC abstraction.
+- Current `NfcService` provides listening mode API and single UID capture workflow placeholder for ACR122U.
+- ACR122U driver-specific implementation can replace internals without changing ViewModels.
+
+## Navigation
+- Shell-based flyout in `AppShell.xaml`.
+- Route registration in `AppShell.xaml.cs`.
+
+## Current Feature Coverage
+- Cohort listing and creation.
+- Attendance display in Cohorts page when a cohort is selected.
+- Session filtering in Cohorts page by selected date scope (day, month, year), matching `SignInTime` and `SignOutTime`.
+- Student creation in Students page (add-only, no student list).
+- UID scan prompt workflow via NFC service abstraction.
+- Check-in/check-out session start/stop and attendance record update by UID.

@@ -1,0 +1,186 @@
+﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
+using StudentLog.UI.Messaging;
+using StudentLog.Application.Interfaces;
+using StudentLog.Core.Models;
+using System.Collections.ObjectModel;
+
+namespace StudentLog.UI.ViewModels;
+
+public class CohortsViewModel : ObservableObject
+{
+    private readonly ICohortService _cohortService;
+    private readonly IStudentService _studentService;
+
+    public ObservableCollection<Cohort> Cohorts { get; } = new();
+    public ObservableCollection<Student> Students { get; } = new();
+    public ObservableCollection<Student> AllStudentsForCohort { get; } = new();
+
+    private Cohort? _selectedCohort;
+    public Cohort? SelectedCohort
+    {
+        get => _selectedCohort;
+        set
+        {
+            if (SetProperty(ref _selectedCohort, value))
+            {
+                _ = LoadStudentsForSelectedAsync();
+                _ = LoadAllStudentsForCohortAsync();
+            }
+        }
+    }
+
+    public IReadOnlyList<string> SessionFilterScopes { get; } = new[] { "Day", "Month", "Year" };
+
+    private string _selectedSessionFilterScope = "Day";
+    public string SelectedSessionFilterScope
+    {
+        get => _selectedSessionFilterScope;
+        set
+        {
+            if (SetProperty(ref _selectedSessionFilterScope, value))
+            {
+                _ = LoadStudentsForSelectedAsync();
+            }
+        }
+    }
+
+    private DateTime _selectedSessionDate = DateTime.Today;
+    public DateTime SelectedSessionDate
+    {
+        get => _selectedSessionDate;
+        set
+        {
+            if (SetProperty(ref _selectedSessionDate, value))
+            {
+                _ = LoadStudentsForSelectedAsync();
+            }
+        }
+    }
+
+    private string _newCohortName = string.Empty;
+    public string NewCohortName
+    {
+        get => _newCohortName;
+        set => SetProperty(ref _newCohortName, value);
+    }
+
+    private string _statusMessage = string.Empty;
+    public string StatusMessage
+    {
+        get => _statusMessage;
+        set => SetProperty(ref _statusMessage, value);
+    }
+
+    public IAsyncRelayCommand LoadCommand { get; }
+    public IAsyncRelayCommand AddCohortCommand { get; }
+
+    public CohortsViewModel(ICohortService cohortService, IStudentService studentService)
+    {
+        _cohortService = cohortService;
+        _studentService = studentService;
+
+        LoadCommand = new AsyncRelayCommand(LoadAsync);
+        AddCohortCommand = new AsyncRelayCommand(AddCohortAsync);
+
+        WeakReferenceMessenger.Default.Register<AttendanceRecordedMessage>(this, async (recipient, message) =>
+        {
+            if (SelectedCohort?.Id == message.CohortId)
+            {
+                // Update date on the UI thread and WAIT for it
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                {
+                    SelectedSessionDate = message.Timestamp.Date;
+                });
+
+                // NOW reload students after date has been updated
+                await LoadStudentsForSelectedAsync();
+            }
+        });
+    }
+
+    public async Task LoadAsync()
+    {
+        Cohorts.Clear();
+        var cohorts = await _cohortService.GetCohortsAsync();
+        foreach (var cohort in cohorts)
+        {
+            Cohorts.Add(cohort);
+        }
+
+        await LoadStudentsForSelectedAsync();
+    }
+
+    public async Task AddCohortAsync()
+    {
+        try
+        {
+            await _cohortService.AddCohortAsync(NewCohortName);
+            NewCohortName = string.Empty;
+            await LoadAsync();
+            StatusMessage = "Cohort added.";
+        }
+        catch (ArgumentException ex)
+        {
+            StatusMessage = ex.Message;
+        }
+    }
+
+    private async Task LoadStudentsForSelectedAsync()
+    {
+        if (SelectedCohort is null)
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                Students.Clear();
+                StatusMessage = "Select a cohort to view attendance sessions.";
+            });
+            return;
+        }
+
+        var students = await _studentService.GetStudentsAsync(SelectedCohort.Id);
+        var filtered = students.Where(HasAttendanceForFilter).ToList();
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            Students.Clear();
+            foreach (var student in filtered)
+            {
+                Students.Add(student);
+            }
+
+            StatusMessage = $"Showing {filtered.Count} attendance record(s) for {SelectedSessionFilterScope.ToLowerInvariant()} filter.";
+        });
+    }
+
+    private bool HasAttendanceForFilter(Student student)
+    {
+        // Show students who have attendance matching the selected period
+        var hasAttendanceOnDate = MatchesSelectedPeriod(student.SignInTime) || MatchesSelectedPeriod(student.SignOutTime);
+
+        // Also show students with NO attendance yet (NULL timestamps) - they are available to clock in
+        var hasNoAttendanceYet = student.SignInTime is null && student.SignOutTime is null;
+
+        return hasAttendanceOnDate || hasNoAttendanceYet;
+    }
+
+    private bool MatchesSelectedPeriod(DateTime? value)
+    {
+        if (!value.HasValue)
+        {
+            return false;
+        }
+
+        var selected = SelectedSessionDate;
+        var date = value.Value;
+
+        return SelectedSessionFilterScope switch
+        {
+            "Day" => date.Date == selected.Date,
+            "Month" => date.Year == selected.Year && date.Month == selected.Month,
+            "Year" => date.Year == selected.Year,
+            _ => date.Date == selected.Date
+        };
+    }
+}

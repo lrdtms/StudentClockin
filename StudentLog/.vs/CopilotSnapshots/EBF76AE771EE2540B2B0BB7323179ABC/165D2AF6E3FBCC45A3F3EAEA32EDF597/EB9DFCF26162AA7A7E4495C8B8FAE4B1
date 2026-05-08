@@ -1,0 +1,46 @@
+﻿using StudentLog.Application.Interfaces;
+using StudentLog.Core.Interfaces.Repositories;
+using StudentLog.Core.Models;
+
+namespace StudentLog.Application.Services;
+
+public class AttendanceService : IAttendanceService
+{
+    private readonly IStudentRepository _studentRepository;
+    private readonly ISessionStateService _sessionStateService;
+
+    public AttendanceService(IStudentRepository studentRepository, ISessionStateService sessionStateService)
+    {
+        _studentRepository = studentRepository;
+        _sessionStateService = sessionStateService;
+    }
+
+    public async Task<AttendanceScanResult> RecordScanAsync(SessionType sessionType, string uid, CancellationToken cancellationToken = default)
+    {
+        if (!_sessionStateService.IsSessionActive || !_sessionStateService.ActiveCohortId.HasValue)
+        {
+            return AttendanceScanResult.SessionInactive();
+        }
+
+        var student = await _studentRepository.GetByUidAsync(uid, cancellationToken);
+        if (student is null || student.CohortId != _sessionStateService.ActiveCohortId.Value)
+        {
+            return AttendanceScanResult.NotInCohort(uid);
+        }
+
+        var timestamp = _sessionStateService.ActiveDay.HasValue
+            ? _sessionStateService.ActiveDay.Value.ToDateTime(TimeOnly.FromDateTime(DateTime.UtcNow))
+            : DateTime.UtcNow;
+
+        if (sessionType == SessionType.ClockIn)
+        {
+            await _studentRepository.UpdateAttendanceAsync(student.Id, timestamp, student.SignOutTime, cancellationToken);
+        }
+        else
+        {
+            await _studentRepository.UpdateAttendanceAsync(student.Id, student.SignInTime, timestamp, cancellationToken);
+        }
+
+        return AttendanceScanResult.Recorded(student, sessionType, timestamp);
+    }
+}

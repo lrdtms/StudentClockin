@@ -1,0 +1,40 @@
+﻿using StudentLog.Core.Models;
+
+namespace StudentLog.Application.Services;
+
+public sealed class AttendanceScanResult
+{
+    private AttendanceScanResult(bool success, string message, Student? student, SessionType? sessionType, DateTime? timestamp)
+    {
+        Success = success;
+        Message = message;
+        Student = student;
+        SessionType = sessionType;
+        Timestamp = timestamp;
+    }
+
+    public bool Success { get; }
+
+    public string Message { get; }
+
+    public Student? Student { get; }
+
+    public SessionType? SessionType { get; }
+
+    public DateTime? Timestamp { get; }
+
+    public static AttendanceScanResult SessionInactive()
+    {
+        return new AttendanceScanResult(false, "Session is not active.", null, null, null);
+    }
+
+    public static AttendanceScanResult NotInCohort(string uid)
+    {
+        return new AttendanceScanResult(false, $"UID {uid} not found in selected cohort.", null, null, null);
+    }
+
+    public static AttendanceScanResult Success(Student student, SessionType sessionType, DateTime timestamp)
+    {
+        return new AttendanceScanResult(true, "Attendance recorded.", student, sessionType, timestamp);
+    }
+}

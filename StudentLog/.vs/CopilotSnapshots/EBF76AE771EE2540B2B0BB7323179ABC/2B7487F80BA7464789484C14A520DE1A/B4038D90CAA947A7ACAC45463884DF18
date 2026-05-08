@@ -1,0 +1,67 @@
+﻿using StudentLog.Application.Interfaces;
+using StudentLog.Core.Interfaces.Repositories;
+using StudentLog.Core.Models;
+
+namespace StudentLog.Application.Services;
+
+public class AttendanceService : IAttendanceService
+{
+    private readonly IStudentRepository _studentRepository;
+    private readonly ISessionStateService _sessionStateService;
+
+    public AttendanceService(IStudentRepository studentRepository, ISessionStateService sessionStateService)
+    {
+        _studentRepository = studentRepository;
+        _sessionStateService = sessionStateService;
+    }
+
+    public async Task<AttendanceScanResult> RecordScanAsync(SessionType sessionType, string uid, CancellationToken cancellationToken = default)
+    {
+        System.Diagnostics.Debug.WriteLine($"[ATTENDANCE] RecordScanAsync called: uid={uid}, sessionType={sessionType}");
+        System.Diagnostics.Debug.WriteLine($"[ATTENDANCE] IsSessionActive={_sessionStateService.IsSessionActive}, ActiveCohortId={_sessionStateService.ActiveCohortId}");
+
+        if (!_sessionStateService.IsSessionActive || !_sessionStateService.ActiveCohortId.HasValue)
+        {
+            System.Diagnostics.Debug.WriteLine("[ATTENDANCE] Session not active or no cohort set");
+            return AttendanceScanResult.SessionInactive();
+        }
+
+        var normalizedUid = uid.Trim().ToUpperInvariant();
+        System.Diagnostics.Debug.WriteLine($"[ATTENDANCE] Looking up student by normalized UID: {normalizedUid}");
+
+        var student = await _studentRepository.GetByUidAsync(normalizedUid, cancellationToken);
+        System.Diagnostics.Debug.WriteLine($"[ATTENDANCE] Student lookup result: {(student is null ? "NOT FOUND" : $"FOUND - Id={student.Id}, Name={student.Name}, CohortId={student.CohortId}")}");
+
+        if (student is null || student.CohortId != _sessionStateService.ActiveCohortId.Value)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ATTENDANCE] Student not in cohort: student={student is not null}, expectedCohortId={_sessionStateService.ActiveCohortId.Value}");
+            return AttendanceScanResult.NotInCohort(normalizedUid);
+        }
+
+        var now = DateTime.Now;
+        var timestamp = _sessionStateService.ActiveDay.HasValue
+            ? _sessionStateService.ActiveDay.Value.ToDateTime(TimeOnly.FromDateTime(now))
+            : now;
+
+        System.Diagnostics.Debug.WriteLine($"[ATTENDANCE] Updating attendance: studentId={student.Id}, timestamp={timestamp}, sessionType={sessionType}");
+
+        if (sessionType == SessionType.ClockIn)
+        {
+            await _studentRepository.UpdateAttendanceAsync(student.Id, timestamp, student.SignOutTime, cancellationToken);
+        }
+        else
+        {
+            await _studentRepository.UpdateAttendanceAsync(student.Id, student.SignInTime, timestamp, cancellationToken);
+        }
+
+        var refreshedStudent = await _studentRepository.GetByUidAsync(normalizedUid, cancellationToken);
+        System.Diagnostics.Debug.WriteLine($"[ATTENDANCE] Refreshed student: {(refreshedStudent is null ? "NOT FOUND" : $"Found - SignInTime={refreshedStudent.SignInTime}, SignOutTime={refreshedStudent.SignOutTime}")}");
+
+        var result = refreshedStudent is null
+            ? AttendanceScanResult.Recorded(student, sessionType, timestamp)
+            : AttendanceScanResult.Recorded(refreshedStudent, sessionType, timestamp);
+
+        System.Diagnostics.Debug.WriteLine($"[ATTENDANCE] RecordScanAsync returning success: {result.IsSuccess}");
+        return result;
+    }
+}

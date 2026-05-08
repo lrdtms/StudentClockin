@@ -1,0 +1,92 @@
+﻿using MySqlConnector;
+
+namespace StudentLog.Infrastructure.Data;
+
+public class DatabaseInitializer
+{
+    private readonly IDbConnectionFactory _connectionFactory;
+
+    public DatabaseInitializer(IDbConnectionFactory connectionFactory)
+    {
+        _connectionFactory = connectionFactory;
+    }
+
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+
+        const string createCohortTable = """
+            CREATE TABLE IF NOT EXISTS cohort (
+                Id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                Name VARCHAR(100) NOT NULL
+            );
+            """;
+
+        const string createStudentTable = """
+            CREATE TABLE IF NOT EXISTS student (
+                Id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                UID VARCHAR(100) NOT NULL UNIQUE,
+                cohortId INT NOT NULL,
+                SignInTime DATETIME NULL,
+                SignOutTime DATETIME NULL,
+                name VARCHAR(100) NOT NULL,
+                surname VARCHAR(100) NOT NULL,
+                CONSTRAINT FK_student_cohort FOREIGN KEY (cohortId) REFERENCES cohort(Id)
+            );
+            """;
+
+        await using var cohortCommand = new MySqlCommand(createCohortTable, connection);
+        await cohortCommand.ExecuteNonQueryAsync(cancellationToken);
+
+        await using var studentCommand = new MySqlCommand(createStudentTable, connection);
+        await studentCommand.ExecuteNonQueryAsync(cancellationToken);
+
+        // Seed test data if tables are empty
+        await SeedTestDataAsync(connection, cancellationToken);
+    }
+
+    private async Task SeedTestDataAsync(MySqlConnection connection, CancellationToken cancellationToken)
+    {
+        // Check if cohorts exist
+        const string checkCohortsQuery = "SELECT COUNT(*) FROM cohort;";
+        await using var checkCohortsCommand = new MySqlCommand(checkCohortsQuery, connection);
+        var cohortCount = Convert.ToInt32(await checkCohortsCommand.ExecuteScalarAsync(cancellationToken));
+
+        if (cohortCount == 0)
+        {
+            System.Diagnostics.Debug.WriteLine("[DB] Seeding test cohorts...");
+
+            const string insertCohortsQuery = """
+                INSERT INTO cohort (Name) VALUES 
+                ('cohort 2026'),
+                ('cohort 1'),
+                ('cohort 1');
+                """;
+
+            await using var insertCohortsCommand = new MySqlCommand(insertCohortsQuery, connection);
+            await insertCohortsCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        // Check if students exist
+        const string checkStudentsQuery = "SELECT COUNT(*) FROM student;";
+        await using var checkStudentsCommand = new MySqlCommand(checkStudentsQuery, connection);
+        var studentCount = Convert.ToInt32(await checkStudentsCommand.ExecuteScalarAsync(cancellationToken));
+
+        if (studentCount == 0)
+        {
+            System.Diagnostics.Debug.WriteLine("[DB] Seeding test students...");
+
+            const string insertStudentsQuery = """
+                INSERT INTO student (UID, cohortId, name, surname, SignInTime, SignOutTime) VALUES 
+                ('04B9B24A901681', 3, 'John', 'Doe', NULL, NULL),
+                ('04F1A24A931ABC', 3, 'Jane', 'Smith', NULL, NULL),
+                ('04C2D34B012DEF', 3, 'Bob', 'Johnson', NULL, NULL);
+                """;
+
+            await using var insertStudentsCommand = new MySqlCommand(insertStudentsQuery, connection);
+            await insertStudentsCommand.ExecuteNonQueryAsync(cancellationToken);
+
+            System.Diagnostics.Debug.WriteLine("[DB] Test data seeded successfully");
+        }
+    }
+}

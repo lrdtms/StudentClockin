@@ -1,0 +1,77 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:viewModels="clr-namespace:StudentLog.UI.ViewModels"
+             xmlns:models="clr-namespace:StudentLog.Core.Models"
+             x:Class="StudentLog.UI.Views.StudentHistoryPage"
+             x:DataType="viewModels:StudentHistoryViewModel"
+             Title="Student History">
+
+    <AbsoluteLayout>
+        <!-- Main Content -->
+        <ScrollView AbsoluteLayout.LayoutBounds="0,0,1,1" AbsoluteLayout.LayoutFlags="All">
+            <VerticalStackLayout Padding="16" Spacing="12">
+                <!-- Student Header -->
+                <Frame Padding="12" BackgroundColor="#2a2a2a" BorderColor="#4db8e8" CornerRadius="8">
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="{Binding Student.Name, StringFormat='Name: {0}'}" 
+                               FontSize="16" FontAttributes="Bold" TextColor="White" />
+                        <Label Text="{Binding Student.Surname, StringFormat='Surname: {0}'}" 
+                               FontSize="14" TextColor="White" />
+                        <Label Text="{Binding Student.UID, StringFormat='UID: {0}'}" 
+                               FontSize="12" TextColor="#CCCCCC" />
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Attendance History Title -->
+                <Label Text="Attendance History" FontAttributes="Bold" FontSize="16" TextColor="White" />
+
+                <!-- Empty State -->
+                <StackLayout IsVisible="{Binding IsHistoryEmpty}" Padding="20" Spacing="8">
+                    <Label Text="No attendance records found" 
+                           FontSize="14" TextColor="#999999" 
+                           HorizontalTextAlignment="Center" />
+                </StackLayout>
+
+                <!-- Attendance Records -->
+                <CollectionView ItemsSource="{Binding AttendanceHistory}" IsVisible="{Binding IsHistoryNotEmpty}">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="models:AttendanceRecord">
+                            <Frame Padding="12" Margin="0,4" BackgroundColor="Transparent" BorderColor="#4db8e8" CornerRadius="8">
+                                <VerticalStackLayout Spacing="6">
+                                    <!-- Sign In -->
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                        <Label Grid.Column="0" Text="Sign In:" FontSize="12" FontAttributes="Bold" TextColor="#4db8e8" />
+                                        <Label Grid.Column="1" Text="{Binding FormattedSignInTime}" FontSize="12" TextColor="White" />
+                                    </Grid>
+
+                                    <!-- Sign Out -->
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                        <Label Grid.Column="0" Text="Sign Out:" FontSize="12" FontAttributes="Bold" TextColor="#4db8e8" />
+                                        <Label Grid.Column="1" Text="{Binding FormattedSignOutTime}" FontSize="12" TextColor="White" />
+                                    </Grid>
+
+                                    <!-- Duration -->
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                        <Label Grid.Column="0" Text="Duration:" FontSize="12" FontAttributes="Bold" TextColor="#51c400" />
+                                        <Label Grid.Column="1" Text="{Binding FormattedDuration}" FontSize="12" TextColor="#51c400" />
+                                    </Grid>
+                                </VerticalStackLayout>
+                            </Frame>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- Back Button at Bottom -->
+        <Button Text="Back to Students" 
+                Command="{Binding BackCommand}"
+                BackgroundColor="#4db8e8"
+                TextColor="White"
+                Padding="10"
+                Margin="16"
+                AbsoluteLayout.LayoutBounds="0,1,1,60"
+                AbsoluteLayout.LayoutFlags="PositionProportional,WidthProportional" />
+    </AbsoluteLayout>
+</ContentPage>
