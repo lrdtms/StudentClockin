@@ -1,4 +1,5 @@
-﻿using StudentLog.Infrastructure.Data;
+using Microsoft.Extensions.Logging;
+using StudentLog.Infrastructure.Data;
 
 namespace StudentLog
 {
@@ -6,15 +7,16 @@ namespace StudentLog
     {
         private readonly AppShell _appShell;
         private readonly DatabaseInitializer _databaseInitializer;
+        private readonly ILogger<App> _logger;
         private bool _databaseInitializationStarted;
 
-        public App(AppShell appShell, DatabaseInitializer databaseInitializer)
+        public App(AppShell appShell, DatabaseInitializer databaseInitializer, ILogger<App> logger)
         {
             InitializeComponent();
             _appShell = appShell;
             _databaseInitializer = databaseInitializer;
+            _logger = logger;
 
-            // Handle unobserved task exceptions
             TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
         }
@@ -40,11 +42,11 @@ namespace StudentLog
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Database initialization failed: {ex}");
+                _logger.LogError(ex, "Database initialisation failed");
 
                 if (window.Page is not null)
                 {
-                    await window.Page.DisplayAlert(
+                    await window.Page.DisplayAlertAsync(
                         "Database Error",
                         "Could not connect to MySQL. The app opened, but data features may not work until the database is reachable.",
                         "OK");
@@ -54,18 +56,12 @@ namespace StudentLog
 
         private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
         {
-            System.Diagnostics.Debug.WriteLine($"[APP] Unobserved task exception: {e.Exception?.GetType().Name} - {e.Exception?.Message}");
-            System.Diagnostics.Debug.WriteLine($"[APP] Stack Trace: {e.Exception?.StackTrace}");
+            _logger.LogError(e.Exception, "[APP] Unobserved task exception");
 
-            // Check if it's a cancellation exception (which is normal and shouldn't crash)
             if (e.Exception?.InnerException is OperationCanceledException or TaskCanceledException)
             {
-                System.Diagnostics.Debug.WriteLine($"[APP] Suppressing expected cancellation exception");
+                _logger.LogInformation("[APP] Suppressing expected cancellation exception");
                 e.SetObserved();
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine($"[APP] Unobserved exception will be rethrown");
             }
         }
 
@@ -73,8 +69,7 @@ namespace StudentLog
         {
             if (e.ExceptionObject is Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[APP] Unhandled exception: {ex.GetType().Name} - {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"[APP] Stack Trace: {ex.StackTrace}");
+                _logger.LogError(ex, "[APP] Unhandled exception");
             }
         }
     }

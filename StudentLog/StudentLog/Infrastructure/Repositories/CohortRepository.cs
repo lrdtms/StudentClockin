@@ -1,7 +1,7 @@
 using MySqlConnector;
+using StudentLog.Core.Interfaces;
 using StudentLog.Core.Interfaces.Repositories;
 using StudentLog.Core.Models;
-using StudentLog.Infrastructure.Data;
 
 namespace StudentLog.Infrastructure.Repositories;
 
@@ -14,10 +14,13 @@ public class CohortRepository : ICohortRepository
         _connectionFactory = connectionFactory;
     }
 
+    private async Task<MySqlConnection> OpenAsync(CancellationToken cancellationToken)
+        => (MySqlConnection)await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+
     public async Task<IReadOnlyList<Cohort>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         var result = new List<Cohort>();
-        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+        await using var connection = await OpenAsync(cancellationToken);
 
         const string sql = "SELECT Id, Name FROM cohort ORDER BY Name;";
         await using var command = new MySqlCommand(sql, connection);
@@ -37,7 +40,7 @@ public class CohortRepository : ICohortRepository
 
     public async Task<int> AddAsync(Cohort cohort, CancellationToken cancellationToken = default)
     {
-        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+        await using var connection = await OpenAsync(cancellationToken);
         const string sql = "INSERT INTO cohort (Name) VALUES (@name); SELECT LAST_INSERT_ID();";
 
         await using var command = new MySqlCommand(sql, connection);
@@ -50,7 +53,7 @@ public class CohortRepository : ICohortRepository
 
     public async Task<Cohort?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
-        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+        await using var connection = await OpenAsync(cancellationToken);
         const string sql = "SELECT Id, Name FROM cohort WHERE Id = @id LIMIT 1;";
 
         await using var command = new MySqlCommand(sql, connection);
@@ -67,5 +70,14 @@ public class CohortRepository : ICohortRepository
             Id = reader.GetInt32("Id"),
             Name = reader.GetString("Name")
         };
+    }
+
+    public async Task DeleteAsync(int id, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        const string sql = "DELETE FROM cohort WHERE Id = @id;";
+        await using var command = new MySqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@id", id);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }

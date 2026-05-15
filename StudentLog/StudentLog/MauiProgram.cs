@@ -1,9 +1,13 @@
-﻿using StudentLog.Application.Interfaces;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using StudentLog.Application.Interfaces;
 using StudentLog.Application.Services;
+using StudentLog.Core.Interfaces;
 using StudentLog.Core.Interfaces.Repositories;
 using StudentLog.Infrastructure.Data;
 using StudentLog.Infrastructure.Repositories;
 using StudentLog.Infrastructure.Services;
+using StudentLog.UI.Services;
 using StudentLog.UI.ViewModels;
 using StudentLog.UI.Views;
 #if WINDOWS
@@ -20,7 +24,17 @@ namespace StudentLog
             builder
                 .UseMauiApp<App>();
 
-            builder.Services.AddSingleton(new MySqlOptions());
+            builder.Logging.AddDebug();
+
+            // Load appsettings.json from the app output directory
+            var appSettingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+            var configuration = new ConfigurationBuilder()
+                .AddJsonFile(appSettingsPath, optional: true, reloadOnChange: false)
+                .Build();
+
+            builder.Configuration.AddConfiguration(configuration);
+            builder.Services.Configure<MySqlOptions>(builder.Configuration.GetSection("MySql"));
+
             builder.Services.AddSingleton<IDbConnectionFactory, MySqlConnectionFactory>();
             builder.Services.AddSingleton<DatabaseInitializer>();
 
@@ -32,6 +46,7 @@ namespace StudentLog
             builder.Services.AddSingleton<IAttendanceService, AttendanceService>();
             builder.Services.AddSingleton<ISessionStateService, SessionStateService>();
             builder.Services.AddSingleton<INfcService, NfcService>();
+            builder.Services.AddSingleton<IDialogService, MauiDialogService>();
 
 #if WINDOWS
             builder.Services.AddTransient<ICsvExportService, CsvExportService>();

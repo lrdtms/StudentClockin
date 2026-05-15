@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using StudentLog.Application.Interfaces;
 using StudentLog.Core.Models;
 using System.Collections.ObjectModel;
@@ -7,57 +8,40 @@ using System.Collections.ObjectModel;
 namespace StudentLog.UI.ViewModels;
 
 [QueryProperty(nameof(StudentId), "studentId")]
-public class StudentHistoryViewModel : ObservableObject
+public partial class StudentHistoryViewModel : ObservableObject
 {
     private readonly IStudentService _studentService;
     private readonly ICsvExportService _csvExportService;
+    private readonly ILogger<StudentHistoryViewModel> _logger;
 
     public ObservableCollection<AttendanceRecord> AttendanceHistory { get; } = new();
 
+    [ObservableProperty]
     private Student? _student;
-    public Student? Student
-    {
-        get => _student;
-        set => SetProperty(ref _student, value);
-    }
 
+    [ObservableProperty]
     private int _studentId;
-    public int StudentId
-    {
-        get => _studentId;
-        set => SetProperty(ref _studentId, value);
-    }
 
+    [ObservableProperty]
     private bool _isLoading;
-    public bool IsLoading
-    {
-        get => _isLoading;
-        set => SetProperty(ref _isLoading, value);
-    }
 
+    [ObservableProperty]
     private bool _isExporting;
-    public bool IsExporting
-    {
-        get => _isExporting;
-        set => SetProperty(ref _isExporting, value);
-    }
 
     public bool IsHistoryEmpty => AttendanceHistory.Count == 0;
     public bool IsHistoryNotEmpty => AttendanceHistory.Count > 0;
 
-    public IAsyncRelayCommand BackCommand { get; }
-    public IAsyncRelayCommand LoadCommand { get; }
-    public IAsyncRelayCommand ExportCsvCommand { get; }
-
-    public StudentHistoryViewModel(IStudentService studentService, ICsvExportService csvExportService)
+    public StudentHistoryViewModel(
+        IStudentService studentService,
+        ICsvExportService csvExportService,
+        ILogger<StudentHistoryViewModel> logger)
     {
         _studentService = studentService;
         _csvExportService = csvExportService;
-        BackCommand = new AsyncRelayCommand(BackAsync);
-        LoadCommand = new AsyncRelayCommand(LoadAsync);
-        ExportCsvCommand = new AsyncRelayCommand(ExportCsvAsync, CanExportCsv);
+        _logger = logger;
     }
 
+    [RelayCommand]
     public async Task LoadAsync()
     {
         try
@@ -68,6 +52,7 @@ public class StudentHistoryViewModel : ObservableObject
 
             if (student is null)
             {
+                _logger.LogWarning("[HISTORY] Student not found for ID: {StudentId}", StudentId);
                 return;
             }
 
@@ -90,7 +75,7 @@ public class StudentHistoryViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[HISTORY] Error loading attendance history: {ex.Message}");
+            _logger.LogError(ex, "[HISTORY] Error loading attendance history for StudentId: {StudentId}", StudentId);
         }
         finally
         {
@@ -98,8 +83,7 @@ public class StudentHistoryViewModel : ObservableObject
         }
     }
 
-    private bool CanExportCsv() => IsHistoryNotEmpty && !IsExporting;
-
+    [RelayCommand(CanExecute = nameof(CanExportCsv))]
     private async Task ExportCsvAsync()
     {
         try
@@ -115,7 +99,7 @@ public class StudentHistoryViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[EXPORT] Error exporting CSV: {ex.Message}");
+            _logger.LogError(ex, "[EXPORT] Error exporting CSV");
         }
         finally
         {
@@ -124,6 +108,9 @@ public class StudentHistoryViewModel : ObservableObject
         }
     }
 
+    private bool CanExportCsv() => IsHistoryNotEmpty && !IsExporting;
+
+    [RelayCommand]
     private async Task BackAsync()
     {
         await Shell.Current.GoToAsync("../");

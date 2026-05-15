@@ -5,23 +5,55 @@ namespace StudentLog.Application.Services;
 
 public class SessionStateService : ISessionStateService
 {
-    public SessionType SessionType { get; private set; } = SessionType.ClockIn;
-    public int? ActiveCohortId { get; private set; }
-    public DateOnly? ActiveDay { get; private set; }
-    public bool IsSessionActive { get; private set; }
+    private readonly Lock _lock = new();
+
+    private SessionType _sessionType = SessionType.ClockIn;
+    private int? _activeCohortId;
+    private DateOnly? _activeDay;
+    private bool _isSessionActive;
+
+    public SessionType SessionType
+    {
+        get { lock (_lock) { return _sessionType; } }
+        private set { lock (_lock) { _sessionType = value; } }
+    }
+
+    public int? ActiveCohortId
+    {
+        get { lock (_lock) { return _activeCohortId; } }
+        private set { lock (_lock) { _activeCohortId = value; } }
+    }
+
+    public DateOnly? ActiveDay
+    {
+        get { lock (_lock) { return _activeDay; } }
+        private set { lock (_lock) { _activeDay = value; } }
+    }
+
+    public bool IsSessionActive
+    {
+        get { lock (_lock) { return _isSessionActive; } }
+        private set { lock (_lock) { _isSessionActive = value; } }
+    }
 
     public void StartSession(int cohortId, SessionType sessionType, DateOnly day)
     {
-        ActiveCohortId = cohortId;
-        SessionType = sessionType;
-        ActiveDay = day;
-        IsSessionActive = true;
+        lock (_lock)
+        {
+            _activeCohortId = cohortId;
+            _sessionType = sessionType;
+            _activeDay = day;
+            _isSessionActive = true;
+        }
     }
 
     public void StopSession()
     {
-        IsSessionActive = false;
-        ActiveCohortId = null;
-        ActiveDay = null;
+        lock (_lock)
+        {
+            _isSessionActive = false;
+            _activeCohortId = null;
+            _activeDay = null;
+        }
     }
 }

@@ -1,19 +1,24 @@
+using Microsoft.Extensions.Logging;
 using MySqlConnector;
+using StudentLog.Core.Interfaces;
 
 namespace StudentLog.Infrastructure.Data;
 
 public class DatabaseInitializer
 {
     private readonly IDbConnectionFactory _connectionFactory;
+    private readonly ILogger<DatabaseInitializer> _logger;
 
-    public DatabaseInitializer(IDbConnectionFactory connectionFactory)
+    public DatabaseInitializer(IDbConnectionFactory connectionFactory, ILogger<DatabaseInitializer> logger)
     {
         _connectionFactory = connectionFactory;
+        _logger = logger;
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+        var dbConnection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+        await using var connection = (MySqlConnection)dbConnection;
 
         const string createCohortTable = """
             CREATE TABLE IF NOT EXISTS cohort (
@@ -56,20 +61,38 @@ public class DatabaseInitializer
         await using var attendanceCommand = new MySqlCommand(createAttendanceTable, connection);
         await attendanceCommand.ExecuteNonQueryAsync(cancellationToken);
 
-        // Seed test data if tables are empty
+        try
+        {
+            const string migrateFkCascade = """
+                ALTER TABLE student
+                  DROP FOREIGN KEY FK_student_cohort,
+                  ADD CONSTRAINT FK_student_cohort FOREIGN KEY (cohortId) REFERENCES cohort(Id) ON DELETE CASCADE;
+                """;
+            await using var fkCommand = new MySqlCommand(migrateFkCascade, connection);
+            await fkCommand.ExecuteNonQueryAsync(cancellationToken);
+            _logger.LogInformation("[DB] Student FK cascade migration applied");
+        }
+        catch (MySqlException)
+        {
+            // Migration already applied or FK name differs — safe to ignore
+        }
+
+        _logger.LogInformation("[DB] Schema initialisation complete");
+
+#if DEBUG
         await SeedTestDataAsync(connection, cancellationToken);
+#endif
     }
 
     private async Task SeedTestDataAsync(MySqlConnection connection, CancellationToken cancellationToken)
     {
-        // Check if cohorts exist
         const string checkCohortsQuery = "SELECT COUNT(*) FROM cohort;";
         await using var checkCohortsCommand = new MySqlCommand(checkCohortsQuery, connection);
         var cohortCount = Convert.ToInt32(await checkCohortsCommand.ExecuteScalarAsync(cancellationToken));
 
         if (cohortCount == 0)
         {
-            System.Diagnostics.Debug.WriteLine("[DB] Seeding test cohorts...");
+            _logger.LogInformation("[DB] Seeding test cohorts...");
 
             const string insertCohortsQuery = """
                 INSERT INTO cohort (Name) VALUES
@@ -81,17 +104,16 @@ public class DatabaseInitializer
             await insertCohortsCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        // Check if students exist
         const string checkStudentsQuery = "SELECT COUNT(*) FROM student;";
         await using var checkStudentsCommand = new MySqlCommand(checkStudentsQuery, connection);
         var studentCount = Convert.ToInt32(await checkStudentsCommand.ExecuteScalarAsync(cancellationToken));
 
         if (studentCount == 0)
         {
-            System.Diagnostics.Debug.WriteLine("[DB] Seeding test students...");
+            _logger.LogInformation("[DB] Seeding test students...");
 
             const string insertStudentsQuery = """
-                INSERT INTO student (UID, cohortId, name, surname, SignInTime, SignOutTime) VALUES 
+                INSERT INTO student (UID, cohortId, name, surname, SignInTime, SignOutTime) VALUES
                 ('04B9B24A901681', 2, 'John', 'Doe', NULL, NULL),
                 ('04F1A24A931ABC', 2, 'Jane', 'Smith', NULL, NULL),
                 ('04C2D34B012DEF', 2, 'Bob', 'Johnson', NULL, NULL);
@@ -100,7 +122,7 @@ public class DatabaseInitializer
             await using var insertStudentsCommand = new MySqlCommand(insertStudentsQuery, connection);
             await insertStudentsCommand.ExecuteNonQueryAsync(cancellationToken);
 
-            System.Diagnostics.Debug.WriteLine("[DB] Test data seeded successfully");
+            _logger.LogInformation("[DB] Test data seeded successfully");
         }
     }
 }

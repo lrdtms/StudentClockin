@@ -1,18 +1,29 @@
+using Microsoft.Extensions.Logging;
 using StudentLog.Application.Interfaces;
 using Windows.Devices.Enumeration;
 using Windows.Devices.SmartCards;
-using Windows.Security.Cryptography;
-using Windows.Storage.Streams;
 
 namespace StudentLog.Infrastructure.Services;
 
-public class NfcService : INfcService
+public class NfcService : INfcService, IAsyncDisposable
 {
     private const int DefaultScanTimeoutSeconds = 10;
+
+    private readonly ILogger<NfcService> _logger;
+
     private CancellationTokenSource? _listeningCts;
     private Task? _listeningTask;
 
+    // Cached reader — resolved once per session; nulled when device watcher fires removal
+    private SmartCardReader? _reader;
+    private DeviceWatcher? _deviceWatcher;
+
     public bool IsListening { get; private set; }
+
+    public NfcService(ILogger<NfcService> logger)
+    {
+        _logger = logger;
+    }
 
     public Task StartListeningAsync(Func<string, Task> onUidScanned, CancellationToken cancellationToken = default)
     {
@@ -23,33 +34,34 @@ public class NfcService : INfcService
             _listeningCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             IsListening = true;
 
-            System.Diagnostics.Debug.WriteLine($"[NFC] Starting listener");
+            _logger.LogInformation("[NFC] Starting listener");
 
             _listeningTask = Task.Run(async () =>
             {
                 try
                 {
+                    await ResolveReaderAsync(_listeningCts.Token);
+                    StartDeviceWatcher();
+
                     string? lastUid = null;
                     int consecutiveErrors = 0;
                     const int MaxConsecutiveErrors = 10;
-                    const int ErrorDelayMs = 1000; // 1 second delay after error
-                    const int NormalDelayMs = 200;  // 200ms between scans when no card
+                    const int ErrorDelayMs = 1000;
+                    const int NormalDelayMs = 200;
 
                     while (!_listeningCts.IsCancellationRequested)
                     {
                         try
                         {
-                            System.Diagnostics.Debug.WriteLine($"[NFC] Polling for cards...");
+                            _logger.LogDebug("[NFC] Polling for cards...");
 
-                            // Call without timeout - the method will return immediately with result or null
-                            // The outer cancellation token is still checked
-                            var uid = await TryReadUidFromAcr122uAsync(TimeSpan.Zero, _listeningCts.Token);
+                            var uid = await TryReadUidFromReaderAsync(_listeningCts.Token);
 
                             if (!string.IsNullOrWhiteSpace(uid))
                             {
                                 if (uid != lastUid)
                                 {
-                                    System.Diagnostics.Debug.WriteLine($"[NFC] ✓ New card detected - UID: {uid}");
+                                    _logger.LogInformation("[NFC] New card detected - UID: {Uid}", uid);
                                     lastUid = uid;
                                     consecutiveErrors = 0;
 
@@ -59,21 +71,24 @@ public class NfcService : INfcService
                                     }
                                     catch (Exception ex)
                                     {
-                                        System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error in onUidScanned callback: {ex.GetType().Name} - {ex.Message}");
+                                        _logger.LogError(ex, "[NFC] Error in onUidScanned callback");
                                     }
                                 }
                                 else
                                 {
-                                    System.Diagnostics.Debug.WriteLine($"[NFC] Card already scanned (duplicate)");
+                                    _logger.LogDebug("[NFC] Card already scanned (duplicate)");
                                 }
                             }
                             else
                             {
-                                // No card detected - this is normal, just wait and poll again
                                 consecutiveErrors = 0;
+                                if (_reader is null)
+                                {
+                                    _logger.LogWarning("[NFC] Reader lost — attempting re-discovery");
+                                    await ResolveReaderAsync(_listeningCts.Token);
+                                }
                             }
 
-                            // Brief delay before next poll
                             try
                             {
                                 await Task.Delay(NormalDelayMs, _listeningCts.Token);
@@ -85,22 +100,20 @@ public class NfcService : INfcService
                         }
                         catch (OperationCanceledException)
                         {
-                            System.Diagnostics.Debug.WriteLine($"[NFC] Listening cancelled");
+                            _logger.LogInformation("[NFC] Listening cancelled");
                             break;
                         }
                         catch (Exception ex)
                         {
                             consecutiveErrors++;
-                            System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error during polling ({consecutiveErrors}/{MaxConsecutiveErrors}): {ex.GetType().Name} - {ex.Message}");
+                            _logger.LogWarning(ex, "[NFC] Error during polling ({Count}/{Max})", consecutiveErrors, MaxConsecutiveErrors);
 
-                            // Stop after too many consecutive errors
                             if (consecutiveErrors >= MaxConsecutiveErrors)
                             {
-                                System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Too many errors, stopping listener");
+                                _logger.LogError("[NFC] Too many consecutive errors — stopping listener");
                                 break;
                             }
 
-                            // Wait longer after errors before retrying
                             try
                             {
                                 await Task.Delay(ErrorDelayMs, _listeningCts.Token);
@@ -114,12 +127,13 @@ public class NfcService : INfcService
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Fatal error in listener loop: {ex.GetType().Name} - {ex.Message}");
+                    _logger.LogError(ex, "[NFC] Fatal error in listener loop");
                 }
                 finally
                 {
                     IsListening = false;
-                    System.Diagnostics.Debug.WriteLine($"[NFC] Listener stopped");
+                    StopDeviceWatcher();
+                    _logger.LogInformation("[NFC] Listener stopped");
                 }
             }, _listeningCts.Token);
 
@@ -127,48 +141,48 @@ public class NfcService : INfcService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error starting listener: {ex.GetType().Name} - {ex.Message}");
+            _logger.LogError(ex, "[NFC] Error starting listener");
             IsListening = false;
             throw;
         }
     }
 
-    public Task StopListeningAsync(CancellationToken cancellationToken = default)
+    public async Task StopListeningAsync(CancellationToken cancellationToken = default)
     {
         try
         {
-            System.Diagnostics.Debug.WriteLine($"[NFC] Stopping listener");
+            _logger.LogInformation("[NFC] Stopping listener");
             _listeningCts?.Cancel();
 
-            // Wait for the listening task to complete gracefully
             if (_listeningTask is not null && !_listeningTask.IsCompleted)
             {
                 try
                 {
-                    _listeningTask.Wait(TimeSpan.FromSeconds(2));
+                    await _listeningTask.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
                 }
-                catch (AggregateException ex)
+                catch (TimeoutException)
                 {
-                    // Ignore task cancellation exceptions
-                    if (!ex.InnerExceptions.All(e => e is OperationCanceledException or TaskCanceledException))
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error waiting for listener to stop: {ex.GetType().Name}");
-                    }
+                    _logger.LogWarning("[NFC] Listener did not stop within 2 s");
+                }
+                catch (OperationCanceledException) { }
+                catch (AggregateException ex)
+                    when (ex.InnerExceptions.All(e => e is OperationCanceledException or TaskCanceledException))
+                {
+                    // Expected cancellation — swallow
                 }
             }
 
             _listeningCts?.Dispose();
             _listeningCts = null;
             _listeningTask = null;
+            _reader = null;
             IsListening = false;
-            System.Diagnostics.Debug.WriteLine($"[NFC] Listener stopped successfully");
-            return Task.CompletedTask;
+            _logger.LogInformation("[NFC] Listener stopped successfully");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error stopping listener: {ex.GetType().Name} - {ex.Message}");
+            _logger.LogError(ex, "[NFC] Error stopping listener");
             IsListening = false;
-            return Task.CompletedTask;
         }
     }
 
@@ -177,21 +191,11 @@ public class NfcService : INfcService
         IsListening = true;
         try
         {
-            var uid = await TryReadUidFromAcr122uAsync(TimeSpan.FromSeconds(DefaultScanTimeoutSeconds), cancellationToken);
-            if (!string.IsNullOrWhiteSpace(uid))
-            {
-                return uid;
-            }
+            if (_reader is null)
+                await ResolveReaderAsync(cancellationToken);
 
-            var manualUid = await MainThread.InvokeOnMainThreadAsync(async () =>
-                await Microsoft.Maui.Controls.Application.Current!.Windows[0].Page!.DisplayPromptAsync(
-                    "Scan NFC",
-                    "No UID was detected from ACR122U. Scan again or enter UID manually.",
-                    "Save",
-                    "Cancel",
-                    "UID"));
-
-            return string.IsNullOrWhiteSpace(manualUid) ? null : manualUid.Trim();
+            var uid = await TryReadUidFromReaderAsync(cancellationToken);
+            return string.IsNullOrWhiteSpace(uid) ? null : uid;
         }
         finally
         {
@@ -199,95 +203,145 @@ public class NfcService : INfcService
         }
     }
 
-    private static async Task<string?> TryReadUidFromAcr122uAsync(TimeSpan timeout, CancellationToken cancellationToken)
+    public async ValueTask DisposeAsync()
+    {
+        _listeningCts?.Cancel();
+
+        if (_listeningTask is not null)
+        {
+            try
+            {
+                await _listeningTask.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            catch { /* best-effort during disposal */ }
+        }
+
+        _listeningCts?.Dispose();
+        _listeningCts = null;
+        _listeningTask = null;
+        StopDeviceWatcher();
+        _reader = null;
+    }
+
+    // ── Private helpers ────────────────────────────────────────────────────────
+
+    private async Task ResolveReaderAsync(CancellationToken cancellationToken)
     {
         try
         {
-            // For continuous listening, don't apply timeout - just use the external cancellationToken
-            // The timeout parameter is ignored for continuous listening mode
-            var ct = cancellationToken;
-
             var selector = SmartCardReader.GetDeviceSelector();
-            var devices = await DeviceInformation.FindAllAsync(selector);
+            var devices = await DeviceInformation.FindAllAsync(selector).AsTask(cancellationToken);
 
-            var readers = new List<SmartCardReader>();
             foreach (var device in devices)
             {
                 try
                 {
-                    var reader = await SmartCardReader.FromIdAsync(device.Id);
-                    if (reader is not null)
+                    var reader = await SmartCardReader.FromIdAsync(device.Id).AsTask(cancellationToken);
+                    if (reader is not null &&
+                        (reader.Name.Contains("ACR122", StringComparison.OrdinalIgnoreCase) ||
+                         reader.Name.Contains("ACS", StringComparison.OrdinalIgnoreCase)))
                     {
-                        readers.Add(reader);
+                        _reader = reader;
+                        _logger.LogInformation("[NFC] Reader resolved: {ReaderName}", _reader.Name);
+                        return;
                     }
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error getting reader from device: {ex.GetType().Name}");
+                    _logger.LogWarning(ex, "[NFC] Error probing device");
                 }
             }
 
-            if (readers.Count == 0)
-            {
-                System.Diagnostics.Debug.WriteLine($"[NFC] ✗ No smart card readers found");
+            _logger.LogWarning("[NFC] No ACR122U/ACS reader found during discovery");
+            _reader = null;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[NFC] Error in ResolveReaderAsync");
+            _reader = null;
+        }
+    }
+
+    private async Task<string?> TryReadUidFromReaderAsync(CancellationToken cancellationToken)
+    {
+        if (_reader is null)
+            return null;
+
+        try
+        {
+            var cards = await _reader.FindAllCardsAsync().AsTask(cancellationToken);
+            if (cards.Count == 0)
                 return null;
-            }
 
-            var targetReader = readers.FirstOrDefault(r =>
-                r.Name.Contains("ACR122", StringComparison.OrdinalIgnoreCase) ||
-                r.Name.Contains("ACS", StringComparison.OrdinalIgnoreCase));
+            var card = cards[0];
+            using var connection = await card.ConnectAsync().AsTask(cancellationToken);
 
-            if (targetReader is null)
+            var command = new byte[] { 0xFF, 0xCA, 0x00, 0x00, 0x00 };
+            var requestBuffer = Windows.Security.Cryptography.CryptographicBuffer.CreateFromByteArray(command);
+            var response = await connection.TransmitAsync(requestBuffer).AsTask(cancellationToken);
+            Windows.Security.Cryptography.CryptographicBuffer.CopyToByteArray(response, out var responseBytes);
+
+            if (responseBytes.Length >= 2)
             {
-                System.Diagnostics.Debug.WriteLine($"[NFC] ✗ No ACR122U/ACS reader found. Available readers: {string.Join(", ", readers.Select(r => r.Name))}");
-                return null;
-            }
-
-            System.Diagnostics.Debug.WriteLine($"[NFC] Using reader: {targetReader.Name}");
-
-            try
-            {
-                var cards = await targetReader.FindAllCardsAsync();
-                if (cards.Count > 0)
+                var sw1 = responseBytes[^2];
+                var sw2 = responseBytes[^1];
+                if (sw1 == 0x90 && sw2 == 0x00 && responseBytes.Length > 2)
                 {
-                    var card = cards[0];
-                    using var connection = await card.ConnectAsync();
-
-                    var command = new byte[] { 0xFF, 0xCA, 0x00, 0x00, 0x00 };
-                    var requestBuffer = CryptographicBuffer.CreateFromByteArray(command);
-                    var response = await connection.TransmitAsync(requestBuffer);
-                    CryptographicBuffer.CopyToByteArray(response, out var responseBytes);
-
-                    if (responseBytes.Length >= 2)
-                    {
-                        var sw1 = responseBytes[^2];
-                        var sw2 = responseBytes[^1];
-                        if (sw1 == 0x90 && sw2 == 0x00 && responseBytes.Length > 2)
-                        {
-                            var uidBytes = responseBytes[..^2];
-                            var uid = Convert.ToHexString(uidBytes);
-                            System.Diagnostics.Debug.WriteLine($"[NFC] ✓ Card detected - UID: {uid}");
-                            return uid;
-                        }
-                    }
+                    var uidBytes = responseBytes[..^2];
+                    var uid = Convert.ToHexString(uidBytes);
+                    _logger.LogInformation("[NFC] Card detected - UID: {Uid}", uid);
+                    return uid;
                 }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error reading card: {ex.GetType().Name} - {ex.Message}");
             }
 
             return null;
         }
         catch (OperationCanceledException)
         {
-            System.Diagnostics.Debug.WriteLine($"[NFC] Scan cancelled");
             throw;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[NFC] ✗ Error in TryReadUidFromAcr122uAsync: {ex.GetType().Name} - {ex.Message}");
+            _logger.LogError(ex, "[NFC] Error reading card");
             return null;
         }
+    }
+
+    private void StartDeviceWatcher()
+    {
+        var selector = SmartCardReader.GetDeviceSelector();
+        _deviceWatcher = DeviceInformation.CreateWatcher(selector);
+        _deviceWatcher.Removed += OnDeviceRemoved;
+        _deviceWatcher.Start();
+        _logger.LogInformation("[NFC] Device watcher started");
+    }
+
+    private void StopDeviceWatcher()
+    {
+        if (_deviceWatcher is null) return;
+        try
+        {
+            _deviceWatcher.Removed -= OnDeviceRemoved;
+            if (_deviceWatcher.Status is DeviceWatcherStatus.Started or DeviceWatcherStatus.EnumerationCompleted)
+                _deviceWatcher.Stop();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[NFC] Error stopping device watcher");
+        }
+        finally
+        {
+            _deviceWatcher = null;
+        }
+    }
+
+    private void OnDeviceRemoved(DeviceWatcher sender, DeviceInformationUpdate args)
+    {
+        _logger.LogWarning("[NFC] Device removed — clearing cached reader");
+        _reader = null;
     }
 }

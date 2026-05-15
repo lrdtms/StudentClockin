@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using Microsoft.Extensions.Logging;
 using StudentLog.Application.Interfaces;
 using StudentLog.Core.Models;
 using StudentLog.UI.Messaging;
@@ -8,74 +9,50 @@ using System.Collections.ObjectModel;
 
 namespace StudentLog.UI.ViewModels;
 
-public class CheckInSessionViewModel : ObservableObject
+public partial class CheckInSessionViewModel : ObservableObject
 {
     private readonly ICohortService _cohortService;
     private readonly ISessionStateService _sessionStateService;
     private readonly INfcService _nfcService;
     private readonly IAttendanceService _attendanceService;
+    private readonly ILogger<CheckInSessionViewModel> _logger;
 
     public ObservableCollection<Cohort> Cohorts { get; } = new();
     public IReadOnlyList<SessionType> SessionTypes { get; } = new[] { SessionType.ClockIn, SessionType.ClockOut };
 
+    [ObservableProperty]
     private Cohort? _selectedCohort;
-    public Cohort? SelectedCohort
-    {
-        get => _selectedCohort;
-        set => SetProperty(ref _selectedCohort, value);
-    }
 
+    [ObservableProperty]
     private SessionType _selectedSessionType = SessionType.ClockIn;
-    public SessionType SelectedSessionType
-    {
-        get => _selectedSessionType;
-        set => SetProperty(ref _selectedSessionType, value);
-    }
 
+    [ObservableProperty]
     private bool _isSessionActive;
-    public bool IsSessionActive
-    {
-        get => _isSessionActive;
-        set => SetProperty(ref _isSessionActive, value);
-    }
 
+    [ObservableProperty]
     private string _statusMessage = "Select cohort and start a session.";
-    public string StatusMessage
-    {
-        get => _statusMessage;
-        set => SetProperty(ref _statusMessage, value);
-    }
 
+    [ObservableProperty]
     private string _lastScannedStudentName = string.Empty;
-    public string LastScannedStudentName
-    {
-        get => _lastScannedStudentName;
-        set => SetProperty(ref _lastScannedStudentName, value);
-    }
 
+    [ObservableProperty]
     private DateTime _selectedDate = DateTime.Today;
-    public DateTime SelectedDate
-    {
-        get => _selectedDate;
-        set => SetProperty(ref _selectedDate, value);
-    }
 
-    public IAsyncRelayCommand LoadCommand { get; }
-    public IAsyncRelayCommand StartSessionCommand { get; }
-    public IAsyncRelayCommand StopSessionCommand { get; }
-
-    public CheckInSessionViewModel(ICohortService cohortService, ISessionStateService sessionStateService, INfcService nfcService, IAttendanceService attendanceService)
+    public CheckInSessionViewModel(
+        ICohortService cohortService,
+        ISessionStateService sessionStateService,
+        INfcService nfcService,
+        IAttendanceService attendanceService,
+        ILogger<CheckInSessionViewModel> logger)
     {
         _cohortService = cohortService;
         _sessionStateService = sessionStateService;
         _nfcService = nfcService;
         _attendanceService = attendanceService;
-
-        LoadCommand = new AsyncRelayCommand(LoadAsync);
-        StartSessionCommand = new AsyncRelayCommand(StartSessionAsync);
-        StopSessionCommand = new AsyncRelayCommand(StopSessionAsync);
+        _logger = logger;
     }
 
+    [RelayCommand]
     public async Task LoadAsync()
     {
         Cohorts.Clear();
@@ -86,6 +63,7 @@ public class CheckInSessionViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
     public async Task StartSessionAsync()
     {
         try
@@ -96,9 +74,9 @@ public class CheckInSessionViewModel : ObservableObject
                 return;
             }
 
-            System.Diagnostics.Debug.WriteLine($"[VIEW MODEL] Starting session for cohort: {SelectedCohort.Name}, Session type: {SelectedSessionType}");
+            _logger.LogInformation("[VM] Starting session for cohort: {Cohort}, type: {Type}",
+                SelectedCohort.Name, SelectedSessionType);
 
-            // Stop any existing session before starting a new one
             if (IsSessionActive)
             {
                 await _nfcService.StopListeningAsync();
@@ -109,17 +87,18 @@ public class CheckInSessionViewModel : ObservableObject
             StatusMessage = $"{SelectedSessionType} session started for {SelectedCohort.Name}. Listening for scans...";
             LastScannedStudentName = string.Empty;
 
-            System.Diagnostics.Debug.WriteLine($"[VIEW MODEL] Session started. Listening for NFC scans...");
+            _logger.LogInformation("[VM] Session started. Listening for NFC scans...");
 
             await _nfcService.StartListeningAsync(async uid =>
             {
                 try
                 {
-                    System.Diagnostics.Debug.WriteLine($"[VIEW MODEL] NFC scan received: {uid}");
+                    _logger.LogDebug("[VM] NFC scan received: {Uid}", uid);
 
                     var result = await _attendanceService.RecordScanAsync(SelectedSessionType, uid);
 
-                    System.Diagnostics.Debug.WriteLine($"[VIEW MODEL] RecordScanAsync result - Success: {result.IsSuccess}, Message: {result.Message}");
+                    _logger.LogDebug("[VM] RecordScanAsync result - Success: {Success}, Message: {Message}",
+                        result.IsSuccess, result.Message);
 
                     MainThread.BeginInvokeOnMainThread(() =>
                     {
@@ -127,20 +106,20 @@ public class CheckInSessionViewModel : ObservableObject
                         {
                             StatusMessage = $"Recorded {SelectedSessionType} for {result.Student.Name} {result.Student.Surname}.";
                             LastScannedStudentName = $"Scanned: {result.Student.Name} {result.Student.Surname}";
-                            System.Diagnostics.Debug.WriteLine($"[VIEW MODEL] Successfully recorded attendance. Student: {result.Student.Name} {result.Student.Surname}");
+                            _logger.LogInformation("[VM] Attendance recorded for {Name} {Surname}",
+                                result.Student.Name, result.Student.Surname);
                             WeakReferenceMessenger.Default.Send(new AttendanceRecordedMessage(result.Student.CohortId, result.Timestamp ?? DateTime.Now));
                             return;
                         }
 
                         StatusMessage = result.Message;
                         LastScannedStudentName = string.Empty;
-                        System.Diagnostics.Debug.WriteLine($"[VIEW MODEL] Attendance recording failed: {result.Message}");
+                        _logger.LogWarning("[VM] Attendance recording failed: {Message}", result.Message);
                     });
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[VIEW MODEL ERROR] Exception during NFC scan processing: {ex.GetType().Name} - {ex.Message}");
-                    System.Diagnostics.Debug.WriteLine($"[VIEW MODEL ERROR] Stack Trace: {ex.StackTrace}");
+                    _logger.LogError(ex, "[VM] Exception during NFC scan processing");
 
                     MainThread.BeginInvokeOnMainThread(() =>
                     {
@@ -152,28 +131,27 @@ public class CheckInSessionViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[VIEW MODEL ERROR] Exception in StartSessionAsync: {ex.GetType().Name} - {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"[VIEW MODEL ERROR] Stack Trace: {ex.StackTrace}");
+            _logger.LogError(ex, "[VM] Exception in StartSessionAsync");
             IsSessionActive = false;
             StatusMessage = $"Error starting session: {ex.Message}";
         }
     }
 
+    [RelayCommand]
     public async Task StopSessionAsync()
     {
         try
         {
-            System.Diagnostics.Debug.WriteLine($"[VIEW MODEL] Stopping session");
+            _logger.LogInformation("[VM] Stopping session");
             await _nfcService.StopListeningAsync();
             _sessionStateService.StopSession();
             IsSessionActive = false;
             StatusMessage = "Session stopped.";
-            System.Diagnostics.Debug.WriteLine($"[VIEW MODEL] Session stopped successfully");
+            _logger.LogInformation("[VM] Session stopped successfully");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[VIEW MODEL ERROR] Exception in StopSessionAsync: {ex.GetType().Name} - {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"[VIEW MODEL ERROR] Stack Trace: {ex.StackTrace}");
+            _logger.LogError(ex, "[VM] Exception in StopSessionAsync");
             IsSessionActive = false;
             StatusMessage = $"Error stopping session: {ex.Message}";
         }

@@ -1,0 +1,17 @@
+# User secrets and local configuration — never commit real credentials
+StudentLog/appsettings.json
+
+# Build output
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# NuGet
+*.nupkg
+packages/

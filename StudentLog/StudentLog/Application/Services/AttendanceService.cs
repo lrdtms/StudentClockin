@@ -1,4 +1,7 @@
+using Microsoft.Extensions.Logging;
+using MySqlConnector;
 using StudentLog.Application.Interfaces;
+using StudentLog.Core.Interfaces;
 using StudentLog.Core.Interfaces.Repositories;
 using StudentLog.Core.Models;
 
@@ -8,11 +11,19 @@ public class AttendanceService : IAttendanceService
 {
     private readonly IStudentRepository _studentRepository;
     private readonly ISessionStateService _sessionStateService;
+    private readonly IDbConnectionFactory _connectionFactory;
+    private readonly ILogger<AttendanceService> _logger;
 
-    public AttendanceService(IStudentRepository studentRepository, ISessionStateService sessionStateService)
+    public AttendanceService(
+        IStudentRepository studentRepository,
+        ISessionStateService sessionStateService,
+        IDbConnectionFactory connectionFactory,
+        ILogger<AttendanceService> logger)
     {
         _studentRepository = studentRepository;
         _sessionStateService = sessionStateService;
+        _connectionFactory = connectionFactory;
+        _logger = logger;
     }
 
     public async Task<AttendanceScanResult> RecordScanAsync(SessionType sessionType, string uid, CancellationToken cancellationToken = default)
@@ -37,43 +48,61 @@ public class AttendanceService : IAttendanceService
                 ? _sessionStateService.ActiveDay.Value.ToDateTime(TimeOnly.FromDateTime(now))
                 : now;
 
-            System.Diagnostics.Debug.WriteLine($"[ATTENDANCE] Updating {sessionType} for Student ID: {student.Id}");
-
-            if (sessionType == SessionType.ClockIn)
-            {
-                var rowsUpdated = await _studentRepository.UpdateAttendanceAsync(student.Id, timestamp, student.SignOutTime, cancellationToken);
-                System.Diagnostics.Debug.WriteLine($"[ATTENDANCE] ClockIn update: {rowsUpdated} row(s) affected");
-
-                if (rowsUpdated == 0)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[ATTENDANCE] WARNING: No rows updated for Student ID: {student.Id}");
-                }
-            }
-            else
-            {
-                var rowsUpdated = await _studentRepository.UpdateAttendanceAsync(student.Id, student.SignInTime, timestamp, cancellationToken);
-                System.Diagnostics.Debug.WriteLine($"[ATTENDANCE] ClockOut update: {rowsUpdated} row(s) affected");
-
-                if (rowsUpdated == 0)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[ATTENDANCE] WARNING: No rows updated for Student ID: {student.Id}");
-                }
-            }
-
             var sessionDate = DateOnly.FromDateTime(timestamp);
-            await _studentRepository.UpsertDailyAttendanceAsync(student.Id, sessionDate, sessionType, timestamp, cancellationToken);
 
-            var refreshedStudent = await _studentRepository.GetByUidAsync(normalizedUid, cancellationToken);
-            System.Diagnostics.Debug.WriteLine($"[ATTENDANCE] {sessionType}: {student.Name} {student.Surname} - SignInTime: {refreshedStudent?.SignInTime}, SignOutTime: {refreshedStudent?.SignOutTime}");
+            _logger.LogInformation("[ATTENDANCE] Recording {SessionType} for Student ID: {StudentId}", sessionType, student.Id);
 
-            return refreshedStudent is null
-                ? AttendanceScanResult.Recorded(student, sessionType, timestamp)
-                : AttendanceScanResult.Recorded(refreshedStudent, sessionType, timestamp);
+            // Open one connection and wrap both writes in a transaction
+            var dbConnection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+            await using var connection = (MySqlConnection)dbConnection;
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                if (sessionType == SessionType.ClockIn)
+                {
+                    var rows = await _studentRepository.UpdateAttendanceAsync(
+                        student.Id, timestamp, student.SignOutTime, cancellationToken, transaction);
+                    if (rows == 0)
+                        _logger.LogWarning("[ATTENDANCE] ClockIn: no rows updated for Student ID: {StudentId}", student.Id);
+                    else
+                        _logger.LogDebug("[ATTENDANCE] ClockIn update: {Rows} row(s) affected", rows);
+                }
+                else
+                {
+                    var rows = await _studentRepository.UpdateAttendanceAsync(
+                        student.Id, student.SignInTime, timestamp, cancellationToken, transaction);
+                    if (rows == 0)
+                        _logger.LogWarning("[ATTENDANCE] ClockOut: no rows updated for Student ID: {StudentId}", student.Id);
+                    else
+                        _logger.LogDebug("[ATTENDANCE] ClockOut update: {Rows} row(s) affected", rows);
+                }
+
+                await _studentRepository.UpsertDailyAttendanceAsync(
+                    student.Id, sessionDate, sessionType, timestamp, cancellationToken, transaction);
+
+                await transaction.CommitAsync(cancellationToken);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+
+            // Update student in memory — no third DB round-trip needed
+            if (sessionType == SessionType.ClockIn)
+                student.SignInTime = timestamp;
+            else
+                student.SignOutTime = timestamp;
+
+            _logger.LogInformation("[ATTENDANCE] {SessionType}: {Name} {Surname} at {Timestamp}",
+                sessionType, student.Name, student.Surname, timestamp);
+
+            return AttendanceScanResult.Recorded(student, sessionType, timestamp);
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ATTENDANCE ERROR] Exception in RecordScanAsync: {ex.GetType().Name} - {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"[ATTENDANCE ERROR] Stack Trace: {ex.StackTrace}");
+            _logger.LogError(ex, "[ATTENDANCE] Exception in RecordScanAsync for UID: {Uid}", uid);
             return AttendanceScanResult.Error($"Error recording attendance: {ex.Message}");
         }
     }

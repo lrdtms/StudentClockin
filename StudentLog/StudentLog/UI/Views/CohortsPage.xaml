@@ -18,7 +18,18 @@
                     <CollectionView.ItemTemplate>
                         <DataTemplate x:DataType="models:Cohort">
                             <Frame Padding="8" BackgroundColor="Transparent" Margin="0,2" BorderColor="#4db8e8" CornerRadius="4">
-                                <Label Text="{Binding Name}" FontSize="14" TextColor="White" />
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <Label Grid.Column="0" Text="{Binding Name}" FontSize="14" TextColor="White" VerticalOptions="Center" />
+                                    <Button Grid.Column="1"
+                                            Text="Delete"
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:CohortsViewModel}}, Path=DeleteCohortCommand}"
+                                            CommandParameter="{Binding .}"
+                                            BackgroundColor="#c0392b"
+                                            TextColor="White"
+                                            FontSize="12"
+                                            Padding="8,4"
+                                            CornerRadius="4" />
+                                </Grid>
                             </Frame>
                         </DataTemplate>
                     </CollectionView.ItemTemplate>

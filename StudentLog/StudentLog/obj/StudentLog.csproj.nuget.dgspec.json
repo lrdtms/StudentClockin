@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\Admin\\Projects\\StudentLogApp\\StudentLog\\StudentLog\\StudentLog.csproj": {}
+    "C:\\Users\\Admin\\Projects\\StudentLogApp\\StudentClockin\\StudentLog\\StudentLog\\StudentLog.csproj": {}
   },
   "projects": {
-    "C:\\Users\\Admin\\Projects\\StudentLogApp\\StudentLog\\StudentLog\\StudentLog.csproj": {
+    "C:\\Users\\Admin\\Projects\\StudentLogApp\\StudentClockin\\StudentLog\\StudentLog\\StudentLog.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Admin\\Projects\\StudentLogApp\\StudentLog\\StudentLog\\StudentLog.csproj",
+        "projectUniqueName": "C:\\Users\\Admin\\Projects\\StudentLogApp\\StudentClockin\\StudentLog\\StudentLog\\StudentLog.csproj",
         "projectName": "StudentLog",
-        "projectPath": "C:\\Users\\Admin\\Projects\\StudentLogApp\\StudentLog\\StudentLog\\StudentLog.csproj",
+        "projectPath": "C:\\Users\\Admin\\Projects\\StudentLogApp\\StudentClockin\\StudentLog\\StudentLog\\StudentLog.csproj",
         "packagesPath": "C:\\Users\\Admin\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Admin\\Projects\\StudentLogApp\\StudentLog\\StudentLog\\obj\\",
+        "outputPath": "C:\\Users\\Admin\\Projects\\StudentLogApp\\StudentClockin\\StudentLog\\StudentLog\\obj\\",
         "projectStyle": "PackageReference",
         "crossTargeting": true,
         "fallbackFolders": [
@@ -31,8 +31,7 @@
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
-          "net10.0-windows10.0.19041.0": {
-            "framework": "net10.0-windows10.0.19041",
+          "net10.0-windows10.0.19041": {
             "targetAlias": "net10.0-windows10.0.19041.0",
             "projectReferences": {}
           }
@@ -50,8 +49,7 @@
         "SdkAnalysisLevel": "10.0.200"
       },
       "frameworks": {
-        "net10.0-windows10.0.19041.0": {
-          "framework": "net10.0-windows10.0.19041",
+        "net10.0-windows10.0.19041": {
           "targetAlias": "net10.0-windows10.0.19041.0",
           "dependencies": {
             "CommunityToolkit.Mvvm": {
@@ -62,7 +60,15 @@
               "target": "Package",
               "version": "[33.1.0, )"
             },
+            "Microsoft.Extensions.Configuration.Json": {
+              "target": "Package",
+              "version": "[10.0.0, )"
+            },
             "Microsoft.Extensions.Logging.Debug": {
+              "target": "Package",
+              "version": "[10.0.0, )"
+            },
+            "Microsoft.Extensions.Options.ConfigurationExtensions": {
               "target": "Package",
               "version": "[10.0.0, )"
             },
@@ -100,7 +106,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.202/PortableRuntimeIdentifierGraph.json",
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.203/PortableRuntimeIdentifierGraph.json",
           "packagesToPrune": {
             "Microsoft.CSharp": "(,4.7.32767]",
             "Microsoft.VisualBasic": "(,10.4.32767]",

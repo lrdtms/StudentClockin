@@ -6,117 +6,61 @@ using System.Collections.ObjectModel;
 
 namespace StudentLog.UI.ViewModels;
 
-public class StudentsViewModel : ObservableObject
+public partial class StudentsViewModel : ObservableObject
 {
     private readonly IStudentService _studentService;
     private readonly ICohortService _cohortService;
     private readonly INfcService _nfcService;
+    private readonly IDialogService _dialogService;
 
     public ObservableCollection<Cohort> Cohorts { get; } = new();
     public ObservableCollection<Student> AllStudentsForCohort { get; } = new();
 
+    [ObservableProperty]
     private Cohort? _selectedCohort;
-    public Cohort? SelectedCohort
-    {
-        get => _selectedCohort;
-        set
-        {
-            if (SetProperty(ref _selectedCohort, value))
-            {
-                _ = LoadAllStudentsForCohortAsync();
-            }
-        }
-    }
 
+    [ObservableProperty]
     private string _name = string.Empty;
-    public string Name
-    {
-        get => _name;
-        set => SetProperty(ref _name, value);
-    }
 
+    [ObservableProperty]
     private string _surname = string.Empty;
-    public string Surname
-    {
-        get => _surname;
-        set => SetProperty(ref _surname, value);
-    }
 
+    [ObservableProperty]
     private string _uid = string.Empty;
-    public string Uid
-    {
-        get => _uid;
-        set => SetProperty(ref _uid, value);
-    }
 
+    [ObservableProperty]
     private string _statusMessage = string.Empty;
-    public string StatusMessage
-    {
-        get => _statusMessage;
-        set => SetProperty(ref _statusMessage, value);
-    }
 
-    // Student Management Properties
+    [ObservableProperty]
     private Student? _selectedStudentForEdit;
-    public Student? SelectedStudentForEdit
-    {
-        get => _selectedStudentForEdit;
-        set => SetProperty(ref _selectedStudentForEdit, value);
-    }
 
+    [ObservableProperty]
     private string _editStudentName = string.Empty;
-    public string EditStudentName
-    {
-        get => _editStudentName;
-        set => SetProperty(ref _editStudentName, value);
-    }
 
+    [ObservableProperty]
     private string _editStudentSurname = string.Empty;
-    public string EditStudentSurname
-    {
-        get => _editStudentSurname;
-        set => SetProperty(ref _editStudentSurname, value);
-    }
 
+    [ObservableProperty]
     private string _editStudentUid = string.Empty;
-    public string EditStudentUid
-    {
-        get => _editStudentUid;
-        set => SetProperty(ref _editStudentUid, value);
-    }
 
+    [ObservableProperty]
     private bool _isEditingStudent;
-    public bool IsEditingStudent
-    {
-        get => _isEditingStudent;
-        set => SetProperty(ref _isEditingStudent, value);
-    }
 
-    public IAsyncRelayCommand LoadCommand { get; }
-    public IAsyncRelayCommand ScanUidCommand { get; }
-    public IAsyncRelayCommand AddStudentCommand { get; }
-    public IAsyncRelayCommand<Student> DeleteStudentCommand { get; }
-    public IAsyncRelayCommand<Student> EditStudentCommand { get; }
-    public IAsyncRelayCommand<Student> ViewHistoryCommand { get; }
-    public IAsyncRelayCommand SaveEditedStudentCommand { get; }
-    public IRelayCommand CancelEditCommand { get; }
+    partial void OnSelectedCohortChanged(Cohort? value) => _ = LoadAllStudentsForCohortAsync();
 
-    public StudentsViewModel(IStudentService studentService, ICohortService cohortService, INfcService nfcService)
+    public StudentsViewModel(
+        IStudentService studentService,
+        ICohortService cohortService,
+        INfcService nfcService,
+        IDialogService dialogService)
     {
         _studentService = studentService;
         _cohortService = cohortService;
         _nfcService = nfcService;
-
-        LoadCommand = new AsyncRelayCommand(LoadAsync);
-        ScanUidCommand = new AsyncRelayCommand(ScanUidAsync);
-        AddStudentCommand = new AsyncRelayCommand(AddStudentAsync);
-        DeleteStudentCommand = new AsyncRelayCommand<Student>(DeleteStudentAsync);
-        EditStudentCommand = new AsyncRelayCommand<Student>(EditStudentAsync);
-        ViewHistoryCommand = new AsyncRelayCommand<Student>(ViewHistoryAsync);
-        SaveEditedStudentCommand = new AsyncRelayCommand(SaveEditedStudentAsync);
-        CancelEditCommand = new RelayCommand(CancelEdit);
+        _dialogService = dialogService;
     }
 
+    [RelayCommand]
     public async Task LoadAsync()
     {
         Cohorts.Clear();
@@ -127,16 +71,33 @@ public class StudentsViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
     public async Task ScanUidAsync()
     {
         var scanned = await _nfcService.ScanSingleUidAsync();
+
         if (!string.IsNullOrWhiteSpace(scanned))
         {
             Uid = scanned;
             StatusMessage = "UID scanned.";
+            return;
+        }
+
+        var manual = await _dialogService.PromptAsync(
+            "Scan NFC",
+            "No UID was detected from ACR122U. Scan again or enter UID manually.",
+            accept: "Save",
+            cancel: "Cancel",
+            placeholder: "UID");
+
+        if (!string.IsNullOrWhiteSpace(manual))
+        {
+            Uid = manual.Trim();
+            StatusMessage = "UID entered manually.";
         }
     }
 
+    [RelayCommand]
     public async Task AddStudentAsync()
     {
         try
@@ -154,29 +115,7 @@ public class StudentsViewModel : ObservableObject
         }
     }
 
-    private async Task LoadAllStudentsForCohortAsync()
-    {
-        if (SelectedCohort is null)
-        {
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                AllStudentsForCohort.Clear();
-            });
-            return;
-        }
-
-        var students = await _studentService.GetStudentsAsync(SelectedCohort.Id);
-
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            AllStudentsForCohort.Clear();
-            foreach (var student in students)
-            {
-                AllStudentsForCohort.Add(student);
-            }
-        });
-    }
-
+    [RelayCommand]
     private async Task DeleteStudentAsync(Student student)
     {
         if (student is null)
@@ -197,6 +136,7 @@ public class StudentsViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
     private Task EditStudentAsync(Student student)
     {
         if (student is null)
@@ -213,6 +153,26 @@ public class StudentsViewModel : ObservableObject
         return Task.CompletedTask;
     }
 
+    [RelayCommand]
+    private async Task ViewHistoryAsync(Student? student)
+    {
+        if (student is null)
+        {
+            StatusMessage = "No student selected.";
+            return;
+        }
+
+        try
+        {
+            await Shell.Current.GoToAsync($"studenthistory?studentId={student.Id}");
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error navigating to history: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
     private async Task SaveEditedStudentAsync()
     {
         if (SelectedStudentForEdit is null)
@@ -243,6 +203,7 @@ public class StudentsViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
     private void CancelEdit()
     {
         IsEditingStudent = false;
@@ -252,22 +213,26 @@ public class StudentsViewModel : ObservableObject
         EditStudentUid = string.Empty;
     }
 
-    private async Task ViewHistoryAsync(Student? student)
+    private async Task LoadAllStudentsForCohortAsync()
     {
-        if (student is null)
+        if (SelectedCohort is null)
         {
-            StatusMessage = "No student selected.";
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                AllStudentsForCohort.Clear();
+            });
             return;
         }
 
-        try
+        var students = await _studentService.GetStudentsAsync(SelectedCohort.Id);
+
+        MainThread.BeginInvokeOnMainThread(() =>
         {
-            // Navigate to student history page and pass student data
-            await Shell.Current.GoToAsync($"studenthistory?studentId={student.Id}");
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Error navigating to history: {ex.Message}";
-        }
+            AllStudentsForCohort.Clear();
+            foreach (var student in students)
+            {
+                AllStudentsForCohort.Add(student);
+            }
+        });
     }
 }

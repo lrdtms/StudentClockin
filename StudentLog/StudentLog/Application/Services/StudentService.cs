@@ -26,24 +26,16 @@ public class StudentService : IStudentService
     public async Task<int> AddStudentAsync(string name, string surname, string uid, int cohortId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(name))
-        {
             throw new ArgumentException("Name is required.", nameof(name));
-        }
 
         if (string.IsNullOrWhiteSpace(surname))
-        {
             throw new ArgumentException("Surname is required.", nameof(surname));
-        }
 
         if (string.IsNullOrWhiteSpace(uid))
-        {
             throw new ArgumentException("UID is required.", nameof(uid));
-        }
 
         if (cohortId <= 0)
-        {
             throw new ArgumentException("Cohort must be selected.", nameof(cohortId));
-        }
 
         var student = new Student
         {
@@ -59,9 +51,7 @@ public class StudentService : IStudentService
     public async Task<int> DeleteStudentAsync(int studentId, CancellationToken cancellationToken = default)
     {
         if (studentId <= 0)
-        {
             throw new ArgumentException("Student ID must be valid.", nameof(studentId));
-        }
 
         return await _studentRepository.DeleteAsync(studentId, cancellationToken);
     }
@@ -69,29 +59,19 @@ public class StudentService : IStudentService
     public async Task<int> UpdateStudentAsync(Student student, CancellationToken cancellationToken = default)
     {
         if (student.Id <= 0)
-        {
             throw new ArgumentException("Student ID must be valid.", nameof(student));
-        }
 
         if (string.IsNullOrWhiteSpace(student.Name))
-        {
             throw new ArgumentException("Name is required.", nameof(student));
-        }
 
         if (string.IsNullOrWhiteSpace(student.Surname))
-        {
             throw new ArgumentException("Surname is required.", nameof(student));
-        }
 
         if (string.IsNullOrWhiteSpace(student.UID))
-        {
             throw new ArgumentException("UID is required.", nameof(student));
-        }
 
         if (student.CohortId <= 0)
-        {
             throw new ArgumentException("Cohort must be valid.", nameof(student));
-        }
 
         student.Name = student.Name.Trim();
         student.Surname = student.Surname.Trim();
@@ -103,19 +83,23 @@ public class StudentService : IStudentService
     public async Task<IReadOnlyList<Student>> GetStudentsForDateAsync(int cohortId, DateOnly sessionDate, CancellationToken cancellationToken = default)
     {
         if (cohortId <= 0)
-        {
             throw new ArgumentException("Cohort must be selected.", nameof(cohortId));
-        }
 
         return await _studentRepository.GetByCohortAndDateAsync(cohortId, sessionDate, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Student>> GetStudentsForPeriodAsync(int cohortId, DateOnly from, DateOnly to, CancellationToken cancellationToken = default)
+    {
+        if (cohortId <= 0)
+            throw new ArgumentException("Cohort must be selected.", nameof(cohortId));
+
+        return await _studentRepository.GetByCohortAndPeriodAsync(cohortId, from, to, cancellationToken);
     }
 
     public async Task<IReadOnlyList<AttendanceRecord>> GetAttendanceHistoryAsync(int studentId, CancellationToken cancellationToken = default)
     {
         if (studentId <= 0)
-        {
             throw new ArgumentException("Student ID must be valid.", nameof(studentId));
-        }
 
         return await _studentRepository.GetAttendanceHistoryAsync(studentId, cancellationToken);
     }

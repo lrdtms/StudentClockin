@@ -1,115 +1,77 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using Microsoft.Extensions.Logging;
 using StudentLog.UI.Messaging;
 using StudentLog.Application.Interfaces;
 using StudentLog.Core.Models;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 
 namespace StudentLog.UI.ViewModels;
 
-public class CohortsViewModel : ObservableObject
+public partial class CohortsViewModel : ObservableObject
 {
     private readonly ICohortService _cohortService;
     private readonly IStudentService _studentService;
     private readonly ICsvExportService _csvExportService;
+    private readonly IDialogService _dialogService;
+    private readonly ILogger<CohortsViewModel> _logger;
 
     public ObservableCollection<Cohort> Cohorts { get; } = new();
     public ObservableCollection<Student> Students { get; } = new();
 
-    private Cohort? _selectedCohort;
-    public Cohort? SelectedCohort
-    {
-        get => _selectedCohort;
-        set
-        {
-            if (SetProperty(ref _selectedCohort, value))
-            {
-                _ = LoadStudentsForSelectedAsync();
-            }
-        }
-    }
-
     public IReadOnlyList<string> SessionFilterScopes { get; } = new[] { "Day", "Month", "Year" };
 
+    [ObservableProperty]
+    private Cohort? _selectedCohort;
+
+    [ObservableProperty]
     private string _selectedSessionFilterScope = "Day";
-    public string SelectedSessionFilterScope
-    {
-        get => _selectedSessionFilterScope;
-        set
-        {
-            if (SetProperty(ref _selectedSessionFilterScope, value))
-            {
-                _ = LoadStudentsForSelectedAsync();
-            }
-        }
-    }
 
+    [ObservableProperty]
     private DateTime _selectedSessionDate = DateTime.Today;
-    public DateTime SelectedSessionDate
-    {
-        get => _selectedSessionDate;
-        set
-        {
-            if (SetProperty(ref _selectedSessionDate, value))
-            {
-                _ = LoadStudentsForSelectedAsync();
-            }
-        }
-    }
 
+    [ObservableProperty]
     private string _newCohortName = string.Empty;
-    public string NewCohortName
-    {
-        get => _newCohortName;
-        set => SetProperty(ref _newCohortName, value);
-    }
 
+    [ObservableProperty]
     private string _statusMessage = string.Empty;
-    public string StatusMessage
-    {
-        get => _statusMessage;
-        set => SetProperty(ref _statusMessage, value);
-    }
 
+    [ObservableProperty]
     private bool _isExporting;
-    public bool IsExporting
-    {
-        get => _isExporting;
-        set => SetProperty(ref _isExporting, value);
-    }
 
-    public IAsyncRelayCommand LoadCommand { get; }
-    public IAsyncRelayCommand AddCohortCommand { get; }
-    public IAsyncRelayCommand ExportCsvCommand { get; }
+    partial void OnSelectedCohortChanged(Cohort? value) => _ = LoadStudentsForSelectedAsync();
+    partial void OnSelectedSessionFilterScopeChanged(string value) => _ = LoadStudentsForSelectedAsync();
+    partial void OnSelectedSessionDateChanged(DateTime value) => _ = LoadStudentsForSelectedAsync();
 
-    public CohortsViewModel(ICohortService cohortService, IStudentService studentService, ICsvExportService csvExportService)
+    public CohortsViewModel(
+        ICohortService cohortService,
+        IStudentService studentService,
+        ICsvExportService csvExportService,
+        IDialogService dialogService,
+        ILogger<CohortsViewModel> logger)
     {
         _cohortService = cohortService;
         _studentService = studentService;
         _csvExportService = csvExportService;
-
-        LoadCommand = new AsyncRelayCommand(LoadAsync);
-        AddCohortCommand = new AsyncRelayCommand(AddCohortAsync);
-        ExportCsvCommand = new AsyncRelayCommand(ExportCsvAsync, CanExportCsv);
+        _dialogService = dialogService;
+        _logger = logger;
 
         WeakReferenceMessenger.Default.Register<AttendanceRecordedMessage>(this, async (recipient, message) =>
         {
             if (SelectedCohort?.Id == message.CohortId)
             {
-                // Update date on the UI thread and WAIT for it
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     SelectedSessionDate = message.Timestamp.Date;
                 });
 
-                // NOW reload students after date has been updated
                 await LoadStudentsForSelectedAsync();
             }
         });
     }
 
+    [RelayCommand]
     public async Task LoadAsync()
     {
         Cohorts.Clear();
@@ -122,6 +84,7 @@ public class CohortsViewModel : ObservableObject
         await LoadStudentsForSelectedAsync();
     }
 
+    [RelayCommand]
     public async Task AddCohortAsync()
     {
         try
@@ -137,8 +100,33 @@ public class CohortsViewModel : ObservableObject
         }
     }
 
-    private bool CanExportCsv() => SelectedCohort is not null && Students.Count > 0 && !IsExporting;
+    [RelayCommand]
+    private async Task DeleteCohortAsync(Cohort cohort)
+    {
+        var confirmed = await _dialogService.ConfirmAsync(
+            "Delete Cohort",
+            $"Delete '{cohort.Name}'? This will permanently delete all students and attendance records in this cohort.",
+            "Delete",
+            "Cancel");
 
+        if (!confirmed) return;
+
+        try
+        {
+            await _cohortService.DeleteCohortAsync(cohort.Id);
+            if (SelectedCohort?.Id == cohort.Id)
+                SelectedCohort = null;
+            await LoadAsync();
+            StatusMessage = $"'{cohort.Name}' deleted.";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[COHORTS] Failed to delete cohort {Id}", cohort.Id);
+            StatusMessage = "Failed to delete cohort.";
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanExportCsv))]
     private async Task ExportCsvAsync()
     {
         IsExporting = true;
@@ -162,7 +150,7 @@ public class CohortsViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[EXPORT] Export failed: {ex.Message}");
+            _logger.LogError(ex, "[EXPORT] Export failed");
         }
         finally
         {
@@ -170,6 +158,8 @@ public class CohortsViewModel : ObservableObject
             ExportCsvCommand.NotifyCanExecuteChanged();
         }
     }
+
+    private bool CanExportCsv() => SelectedCohort is not null && Students.Count > 0 && !IsExporting;
 
     private async Task LoadStudentsForSelectedAsync()
     {
@@ -184,68 +174,50 @@ public class CohortsViewModel : ObservableObject
             return;
         }
 
-        if (SelectedSessionFilterScope == "Day" && SelectedSessionDate.Date != DateTime.Today)
+        var selected = SelectedSessionDate;
+        IReadOnlyList<Student> students;
+
+        switch (SelectedSessionFilterScope)
         {
-            var date = DateOnly.FromDateTime(SelectedSessionDate);
-            var historicStudents = await _studentService.GetStudentsForDateAsync(SelectedCohort.Id, date);
-
-            MainThread.BeginInvokeOnMainThread(() =>
+            case "Day":
             {
-                Students.Clear();
-                foreach (var student in historicStudents)
-                    Students.Add(student);
-
-                StatusMessage = $"Showing {historicStudents.Count} attendance record(s) for day filter.";
-            });
-
-            ExportCsvCommand.NotifyCanExecuteChanged();
-            return;
+                var date = DateOnly.FromDateTime(selected);
+                students = await _studentService.GetStudentsForDateAsync(SelectedCohort.Id, date);
+                break;
+            }
+            case "Month":
+            {
+                var from = new DateOnly(selected.Year, selected.Month, 1);
+                var to = from.AddMonths(1).AddDays(-1);
+                students = await _studentService.GetStudentsForPeriodAsync(SelectedCohort.Id, from, to);
+                break;
+            }
+            case "Year":
+            {
+                var from = new DateOnly(selected.Year, 1, 1);
+                var to = new DateOnly(selected.Year, 12, 31);
+                students = await _studentService.GetStudentsForPeriodAsync(SelectedCohort.Id, from, to);
+                break;
+            }
+            default:
+            {
+                var date = DateOnly.FromDateTime(selected);
+                students = await _studentService.GetStudentsForDateAsync(SelectedCohort.Id, date);
+                break;
+            }
         }
 
-        var students = await _studentService.GetStudentsAsync(SelectedCohort.Id);
-        var filtered = students.Where(HasAttendanceForFilter).ToList();
+        _logger.LogDebug("[COHORTS] Loaded {Count} students for {Scope} filter", students.Count, SelectedSessionFilterScope);
 
         MainThread.BeginInvokeOnMainThread(() =>
         {
             Students.Clear();
-            foreach (var student in filtered)
-            {
+            foreach (var student in students)
                 Students.Add(student);
-            }
 
-            StatusMessage = $"Showing {filtered.Count} attendance record(s) for {SelectedSessionFilterScope.ToLowerInvariant()} filter.";
+            StatusMessage = $"Showing {students.Count} attendance record(s) for {SelectedSessionFilterScope.ToLowerInvariant()} filter.";
         });
 
         ExportCsvCommand.NotifyCanExecuteChanged();
-    }
-
-    private bool HasAttendanceForFilter(Student student)
-    {
-        // Show students who have attendance matching the selected period
-        var hasAttendanceOnDate = MatchesSelectedPeriod(student.SignInTime) || MatchesSelectedPeriod(student.SignOutTime);
-
-        // Also show students with NO attendance yet (NULL timestamps) - they are available to clock in
-        var hasNoAttendanceYet = student.SignInTime is null && student.SignOutTime is null;
-
-        return hasAttendanceOnDate || hasNoAttendanceYet;
-    }
-
-    private bool MatchesSelectedPeriod(DateTime? value)
-    {
-        if (!value.HasValue)
-        {
-            return false;
-        }
-
-        var selected = SelectedSessionDate;
-        var date = value.Value;
-
-        return SelectedSessionFilterScope switch
-        {
-            "Day" => date.Date == selected.Date,
-            "Month" => date.Year == selected.Year && date.Month == selected.Month,
-            "Year" => date.Year == selected.Year,
-            _ => date.Date == selected.Date
-        };
     }
 }

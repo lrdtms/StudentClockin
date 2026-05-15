@@ -27,4 +27,7 @@ public class CohortService : ICohortService
 
         return await _cohortRepository.AddAsync(new Cohort { Name = name.Trim() }, cancellationToken);
     }
+
+    public Task DeleteCohortAsync(int id, CancellationToken cancellationToken = default)
+        => _cohortRepository.DeleteAsync(id, cancellationToken);
 }

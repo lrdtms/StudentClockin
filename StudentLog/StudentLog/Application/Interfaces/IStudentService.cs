@@ -11,4 +11,5 @@ public interface IStudentService
     Task<int> UpdateStudentAsync(Student student, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<AttendanceRecord>> GetAttendanceHistoryAsync(int studentId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Student>> GetStudentsForDateAsync(int cohortId, DateOnly sessionDate, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Student>> GetStudentsForPeriodAsync(int cohortId, DateOnly from, DateOnly to, CancellationToken cancellationToken = default);
 }
