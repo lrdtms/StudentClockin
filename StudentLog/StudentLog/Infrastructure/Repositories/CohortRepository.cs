@@ -75,9 +75,18 @@ public class CohortRepository : ICohortRepository
     public async Task DeleteAsync(int id, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
-        const string sql = "DELETE FROM cohort WHERE Id = @id;";
-        await using var command = new MySqlCommand(sql, connection);
-        command.Parameters.AddWithValue("@id", id);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        await using var deleteStudentsCmd = new MySqlCommand(
+            "DELETE FROM student WHERE cohortId = @id;", connection, transaction);
+        deleteStudentsCmd.Parameters.AddWithValue("@id", id);
+        await deleteStudentsCmd.ExecuteNonQueryAsync(cancellationToken);
+
+        await using var deleteCohortCmd = new MySqlCommand(
+            "DELETE FROM cohort WHERE Id = @id;", connection, transaction);
+        deleteCohortCmd.Parameters.AddWithValue("@id", id);
+        await deleteCohortCmd.ExecuteNonQueryAsync(cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
     }
 }

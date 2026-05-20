@@ -5,43 +5,79 @@
              x:Class="StudentLog.UI.Views.CheckInSessionPage"
              x:DataType="viewModels:CheckInSessionViewModel"
              Title="Check-In Sessions">
-    <ScrollView>
-        <VerticalStackLayout Padding="16" Spacing="12">
-            <!-- Cohort Selection -->
-            <Label Text="Cohort" TextColor="White" />
-            <Picker Title="Select cohort"
-                    ItemsSource="{Binding Cohorts}"
-                    ItemDisplayBinding="{Binding Name}"
-                    SelectedItem="{Binding SelectedCohort}"
-                    BackgroundColor="Transparent"
-                    TextColor="White" />
 
-            <!-- Session Type Selection -->
-            <Label Text="Session Type" TextColor="White" />
-            <Picker Title="Select session"
-                    SelectedIndex="0"
-                    ItemsSource="{Binding SessionTypes}"
-                    SelectedItem="{Binding SelectedSessionType}"
-                    BackgroundColor="Transparent"
-                    TextColor="White" />
+    <Grid RowDefinitions="Auto,*" Padding="16" RowSpacing="0">
 
-            <!-- Date Selection -->
-            <Label Text="Date" TextColor="White" />
-            <DatePicker Date="{Binding SelectedDate}" BackgroundColor="Transparent" TextColor="White" />
+        <!-- Session Controls Card -->
+        <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,8,0,12">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="12">
 
-            <!-- Session Control Buttons -->
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
-                <Button Grid.Column="0" Text="Start Session" Command="{Binding StartSessionCommand}" />
-                <Button Grid.Column="1" Text="Stop Session" Command="{Binding StopSessionCommand}" />
+                <Label Grid.Row="0" Text="Session Setup" Style="{StaticResource SectionHeader}" Margin="0,0,0,0"/>
+
+                <!-- Cohort + Session Type -->
+                <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="12">
+                    <Picker Grid.Column="0"
+                            Title="Select cohort"
+                            ItemsSource="{Binding Cohorts}"
+                            ItemDisplayBinding="{Binding Name}"
+                            SelectedItem="{Binding SelectedCohort}" />
+                    <Picker Grid.Column="1"
+                            Title="Session type"
+                            SelectedIndex="0"
+                            ItemsSource="{Binding SessionTypes}"
+                            SelectedItem="{Binding SelectedSessionType}" />
+                </Grid>
+
+                <!-- Date -->
+                <DatePicker Grid.Row="2" Date="{Binding SelectedDate}" HorizontalOptions="Start" />
+
+                <!-- Action Buttons -->
+                <Grid Grid.Row="3" ColumnDefinitions="*,*" ColumnSpacing="12">
+                    <Button Grid.Column="0" Text="START SESSION" Command="{Binding StartSessionCommand}" />
+                    <Button Grid.Column="1" Text="STOP SESSION" Command="{Binding StopSessionCommand}" Style="{StaticResource SecondaryButton}" />
+                </Grid>
+
             </Grid>
+        </Border>
 
-            <!-- Last Scanned Student -->
-            <Frame Padding="12" BackgroundColor="Transparent" BorderColor="#4db8e8" CornerRadius="8" IsVisible="{Binding LastScannedStudentName, Converter={StaticResource StringToBoolConverter}}">
-                <Label Text="{Binding LastScannedStudentName}" TextColor="#90EE90" FontAttributes="Bold" FontSize="14" />
-            </Frame>
+        <!-- Scan Status Hero -->
+        <Border Grid.Row="1" Style="{StaticResource AccentCard}" Margin="0,0,0,8">
+            <Grid RowDefinitions="*,Auto,Auto,*" VerticalOptions="Fill">
 
-            <!-- Status Messages -->
-            <Label Text="{Binding StatusMessage}" TextColor="White" FontSize="12" LineBreakMode="WordWrap" />
-        </VerticalStackLayout>
-    </ScrollView>
+                <!-- Spacer top -->
+                <BoxView Grid.Row="0" Color="Transparent" />
+
+                <!-- Student name — hero display, visible when a name is present -->
+                <Label Grid.Row="1"
+                       Text="{Binding LastScannedStudentName}"
+                       Style="{StaticResource HeroLabel}"
+                       FontSize="42"
+                       HorizontalTextAlignment="Center"
+                       VerticalOptions="Center"
+                       IsVisible="{Binding LastScannedStudentName, Converter={StaticResource StringToBoolConverter}}" />
+
+                <!-- Status area — session state and last event message -->
+                <VerticalStackLayout Grid.Row="2" Spacing="8" HorizontalOptions="Fill">
+                    <Label Text="SCAN STATUS" Style="{StaticResource SectionHeader}" HorizontalTextAlignment="Center" Margin="0,0,0,0"/>
+                    <Label Text="{Binding StatusMessage}"
+                           Style="{StaticResource MutedLabel}"
+                           FontSize="14"
+                           HorizontalTextAlignment="Center"
+                           LineBreakMode="WordWrap" />
+                    <Label Text="NFC READY"
+                           TextColor="{StaticResource AccentTeal}"
+                           FontFamily="OpenSansSemibold"
+                           FontSize="11"
+                           CharacterSpacing="2"
+                           HorizontalTextAlignment="Center"
+                           IsVisible="{Binding IsSessionActive}" />
+                </VerticalStackLayout>
+
+                <!-- Spacer bottom -->
+                <BoxView Grid.Row="3" Color="Transparent" />
+
+            </Grid>
+        </Border>
+
+    </Grid>
 </ContentPage>

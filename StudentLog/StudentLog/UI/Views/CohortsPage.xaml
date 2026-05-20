@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:viewModels="clr-namespace:StudentLog.UI.ViewModels"
@@ -6,77 +6,98 @@
              x:Class="StudentLog.UI.Views.CohortsPage"
              x:DataType="viewModels:CohortsViewModel"
              Title="Cohorts">
-    <Grid RowDefinitions="Auto,*" ColumnDefinitions="*">
-        <ScrollView Grid.Row="0">
-            <VerticalStackLayout Padding="16" Spacing="12">
-                <Label Text="Add New Cohort" FontAttributes="Bold" FontSize="16" TextColor="White" />
-                <Entry Placeholder="Cohort name" Text="{Binding NewCohortName}" BackgroundColor="Transparent" TextColor="White" PlaceholderColor="#999999" />
-                <Button Text="Add Cohort" Command="{Binding AddCohortCommand}" />
 
-                <Label Text="Select Cohort" FontAttributes="Bold" FontSize="16" Margin="0,16,0,0" TextColor="White" />
-                <CollectionView ItemsSource="{Binding Cohorts}" SelectionMode="Single" SelectedItem="{Binding SelectedCohort}">
-                    <CollectionView.ItemTemplate>
-                        <DataTemplate x:DataType="models:Cohort">
-                            <Frame Padding="8" BackgroundColor="Transparent" Margin="0,2" BorderColor="#4db8e8" CornerRadius="4">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                    <Label Grid.Column="0" Text="{Binding Name}" FontSize="14" TextColor="White" VerticalOptions="Center" />
-                                    <Button Grid.Column="1"
-                                            Text="Delete"
-                                            Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:CohortsViewModel}}, Path=DeleteCohortCommand}"
-                                            CommandParameter="{Binding .}"
-                                            BackgroundColor="#c0392b"
-                                            TextColor="White"
-                                            FontSize="12"
-                                            Padding="8,4"
-                                            CornerRadius="4" />
-                                </Grid>
-                            </Frame>
-                        </DataTemplate>
-                    </CollectionView.ItemTemplate>
-                </CollectionView>
+    <Grid RowDefinitions="Auto,*" Padding="16" RowSpacing="0">
 
-                <Label Text="Attendance Records" FontAttributes="Bold" FontSize="16" Margin="0,16,0,0" TextColor="White" />
+        <!-- Top management panel -->
+        <VerticalStackLayout Grid.Row="0" Spacing="0">
 
-                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" Padding="0,0,0,8">
-                    <Label Grid.Column="0" Text="Filter:" VerticalOptions="Center" TextColor="White" />
-                    <Picker Grid.Column="1"
-                            ItemsSource="{Binding SessionFilterScopes}"
-                            SelectedItem="{Binding SelectedSessionFilterScope}"
-                            BackgroundColor="Transparent"
-                            TextColor="White" />
-                </Grid>
+            <Label Text="Cohort Management" Style="{StaticResource SectionHeader}"/>
 
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                    <DatePicker Grid.Column="0" Date="{Binding SelectedSessionDate}" BackgroundColor="Transparent" TextColor="White" />
-                    <Button Grid.Column="1" Text="Export CSV" Command="{Binding ExportCsvCommand}" VerticalOptions="Center" />
-                </Grid>
+            <!-- Add cohort inline -->
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,0,0,8">
+                <Entry Grid.Column="0" Placeholder="New cohort name..." Text="{Binding NewCohortName}" />
+                <Button Grid.Column="1" Text="ADD" Command="{Binding AddCohortCommand}" />
+            </Grid>
 
-                <Label Text="{Binding StatusMessage}" TextColor="White" />
-            </VerticalStackLayout>
-        </ScrollView>
+            <!-- Cohort list — capped height so attendance list always gets space -->
+            <CollectionView ItemsSource="{Binding Cohorts}"
+                            SelectionMode="Single"
+                            SelectedItem="{Binding SelectedCohort}"
+                            MaximumHeightRequest="180">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="models:Cohort">
+                        <Border Style="{StaticResource Card}" Margin="0,2">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <Label Grid.Column="0"
+                                       Text="{Binding Name}"
+                                       FontFamily="OpenSansSemibold"
+                                       FontSize="14"
+                                       VerticalOptions="Center" />
+                                <Button Grid.Column="1"
+                                        Text="DELETE"
+                                        Style="{StaticResource DangerButton}"
+                                        FontSize="11"
+                                        Padding="10,6"
+                                        MinimumHeightRequest="32"
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:CohortsViewModel}}, Path=DeleteCohortCommand}"
+                                        CommandParameter="{Binding .}" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
 
-        <CollectionView Grid.Row="1" ItemsSource="{Binding Students}" VerticalOptions="FillAndExpand" Margin="16,8,16,16">
+            <!-- Attendance filter bar -->
+            <Label Text="Attendance Records" Style="{StaticResource SectionHeader}"/>
+
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10" Margin="0,0,0,8">
+                <Label Grid.Column="0" Text="Filter:" VerticalOptions="Center" Style="{StaticResource MutedLabel}"/>
+                <Picker Grid.Column="1"
+                        ItemsSource="{Binding SessionFilterScopes}"
+                        SelectedItem="{Binding SelectedSessionFilterScope}" />
+                <DatePicker Grid.Column="2" Date="{Binding SelectedSessionDate}" />
+                <Button Grid.Column="3"
+                        Text="EXPORT CSV"
+                        Command="{Binding ExportCsvCommand}"
+                        Style="{StaticResource SecondaryButton}"
+                        FontSize="12"
+                        Padding="12,8" />
+            </Grid>
+
+            <Label Text="{Binding StatusMessage}" Style="{StaticResource MutedLabel}" Margin="0,0,0,8"/>
+
+        </VerticalStackLayout>
+
+        <!-- Attendance record list -->
+        <CollectionView Grid.Row="1" ItemsSource="{Binding Students}" VerticalOptions="Fill">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="models:Student">
-                    <Frame Padding="12" Margin="0,4" BackgroundColor="Transparent" BorderColor="#4db8e8" CornerRadius="8">
-                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" ColumnSpacing="10" RowSpacing="5">
-                            <StackLayout Grid.Row="0" Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                <Label Text="{Binding Name}" FontAttributes="Bold" FontSize="16" TextColor="White" />
-                                <Label Text="{Binding Surname}" FontSize="14" TextColor="White" />
+                    <Border Style="{StaticResource Card}">
+                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" ColumnSpacing="16" RowSpacing="4">
+
+                            <StackLayout Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                <Label Text="{Binding Name}" FontFamily="OpenSansSemibold" FontSize="15" />
+                                <Label Text="{Binding Surname}" FontSize="15" TextColor="{StaticResource TextSecondary}" />
                             </StackLayout>
 
-                            <StackLayout Grid.Row="0" Grid.Column="1" Spacing="5" VerticalOptions="Center">
-                                <Label Text="{Binding SignInTime, Converter={StaticResource SignInStatusConverter}}" FontAttributes="Bold" FontSize="14" TextColor="White" />
+                            <Label Grid.Row="0" Grid.Column="1"
+                                   Text="{Binding SignInTime, Converter={StaticResource SignInStatusConverter}}"
+                                   FontFamily="OpenSansSemibold"
+                                   FontSize="12"
+                                   TextColor="{StaticResource AccentGreen}"
+                                   VerticalOptions="Center" />
+
+                            <StackLayout Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="16">
+                                <Label Text="{Binding SignInTime, StringFormat='In: {0:HH:mm}'}" Style="{StaticResource MutedLabel}" />
+                                <Label Text="{Binding SignOutTime, StringFormat='Out: {0:HH:mm}'}" Style="{StaticResource MutedLabel}" />
                             </StackLayout>
 
-                            <StackLayout Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Spacing="3" Margin="0,5,0,0">
-                                <Label Text="{Binding SignInTime, StringFormat='Sign In: {0:yyyy-MM-dd HH:mm}'}" FontSize="12" TextColor="#CCCCCC" />
-                                <Label Text="{Binding SignOutTime, StringFormat='Sign Out: {0:yyyy-MM-dd HH:mm}'}" FontSize="12" TextColor="#CCCCCC" />
-                            </StackLayout>
                         </Grid>
-                    </Frame>
+                    </Border>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
+
     </Grid>
 </ContentPage>

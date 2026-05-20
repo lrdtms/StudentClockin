@@ -8,106 +8,101 @@
              Title="Students">
 
     <AbsoluteLayout>
-        <!-- Main Content with Scrolling -->
+
+        <!-- Main scrollable content -->
         <ScrollView AbsoluteLayout.LayoutBounds="0,0,1,1" AbsoluteLayout.LayoutFlags="All">
-            <VerticalStackLayout Padding="16" Spacing="12">
-                <!-- Add Student Section -->
-                <Label Text="Add New Student" FontAttributes="Bold" FontSize="16" TextColor="White" />
+            <VerticalStackLayout Padding="16" Spacing="0">
 
-                <Picker Title="Select cohort"
-                        ItemsSource="{Binding Cohorts}"
-                        ItemDisplayBinding="{Binding Name}"
-                        SelectedItem="{Binding SelectedCohort}"
-                        BackgroundColor="Transparent"
-                        TextColor="White" />
+                <Label Text="Add Student" Style="{StaticResource SectionHeader}"/>
 
-                <Entry Placeholder="Name" Text="{Binding Name}" BackgroundColor="Transparent" TextColor="White" PlaceholderColor="#999999" />
-                <Entry Placeholder="Surname" Text="{Binding Surname}" BackgroundColor="Transparent" TextColor="White" PlaceholderColor="#999999" />
+                <Border Style="{StaticResource Card}" Margin="0,0,0,16">
+                    <VerticalStackLayout Spacing="10">
+                        <Picker Title="Select cohort"
+                                ItemsSource="{Binding Cohorts}"
+                                ItemDisplayBinding="{Binding Name}"
+                                SelectedItem="{Binding SelectedCohort}" />
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                            <Entry Grid.Column="0" Placeholder="First name" Text="{Binding Name}" />
+                            <Entry Grid.Column="1" Placeholder="Surname" Text="{Binding Surname}" />
+                        </Grid>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Entry Grid.Column="0" Placeholder="NFC UID" Text="{Binding Uid}" />
+                            <Button Grid.Column="1" Text="SCAN" Command="{Binding ScanUidCommand}" Style="{StaticResource SecondaryButton}" />
+                        </Grid>
+                        <Button Text="ADD STUDENT" Command="{Binding AddStudentCommand}" HorizontalOptions="Start"/>
+                        <Label Text="{Binding StatusMessage}" Style="{StaticResource MutedLabel}" />
+                    </VerticalStackLayout>
+                </Border>
 
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                    <Entry Grid.Column="0" Placeholder="UID" Text="{Binding Uid}" BackgroundColor="Transparent" TextColor="White" PlaceholderColor="#999999" />
-                    <Button Grid.Column="1" Text="Scan UID" Command="{Binding ScanUidCommand}" />
-                </Grid>
+                <Label Text="All Students" Style="{StaticResource SectionHeader}"/>
 
-                <Button Text="Add Student" Command="{Binding AddStudentCommand}" />
-                <Label Text="{Binding StatusMessage}" TextColor="White" />
-
-                <!-- Student Management Section -->
-                <Label Text="Manage Students" FontAttributes="Bold" FontSize="16" Margin="0,16,0,0" TextColor="White" />
-
-                <!-- Student List -->
                 <CollectionView ItemsSource="{Binding AllStudentsForCohort}">
                     <CollectionView.ItemTemplate>
                         <DataTemplate x:DataType="models:Student">
-                            <Frame Padding="12" Margin="0,4" BackgroundColor="Transparent" BorderColor="#4db8e8" CornerRadius="8">
-                                <Grid Padding="0" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
-                                    <!-- Student Info -->
+                            <Border Style="{StaticResource Card}">
+                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
+
                                     <StackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                        <Label Text="{Binding Name, StringFormat='Name: {0}'}" FontSize="14" FontAttributes="Bold" TextColor="White" />
-                                        <Label Text="{Binding Surname, StringFormat='Surname: {0}'}" FontSize="13" TextColor="White" />
-                                        <Label Text="{Binding UID, StringFormat='UID: {0}'}" FontSize="12" TextColor="#CCCCCC" />
+                                        <StackLayout Orientation="Horizontal" Spacing="6">
+                                            <Label Text="{Binding Name}" FontFamily="OpenSansSemibold" FontSize="14" />
+                                            <Label Text="{Binding Surname}" FontSize="14" TextColor="{StaticResource TextSecondary}"/>
+                                        </StackLayout>
+                                        <Label Text="{Binding UID}" Style="{StaticResource MutedLabel}" />
                                     </StackLayout>
 
-                                    <!-- View History Button -->
-                                    <Button Grid.Column="1" 
-                                            Text="History" 
-                                            Padding="8" 
-                                            FontSize="12"
-                                            BackgroundColor="#51c400"
+                                    <Button Grid.Column="1"
+                                            Text="HISTORY"
+                                            Style="{StaticResource SuccessButton}"
+                                            FontSize="11" Padding="10,6" MinimumHeightRequest="32"
                                             Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.ViewHistoryCommand}"
                                             CommandParameter="{Binding .}" />
 
-                                    <!-- Edit Button -->
-                                    <Button Grid.Column="2" 
-                                            Text="Edit" 
-                                            Padding="8" 
-                                            FontSize="12"
+                                    <Button Grid.Column="2"
+                                            Text="EDIT"
+                                            Style="{StaticResource SecondaryButton}"
+                                            FontSize="11" Padding="10,6" MinimumHeightRequest="32"
                                             Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.EditStudentCommand}"
                                             CommandParameter="{Binding .}" />
 
-                                    <!-- Delete Button -->
-                                    <Button Grid.Column="3" 
-                                            Text="Delete" 
-                                            Padding="8" 
-                                            FontSize="12"
-                                            BackgroundColor="#ff6b6b"
+                                    <Button Grid.Column="3"
+                                            Text="DEL"
+                                            Style="{StaticResource DangerButton}"
+                                            FontSize="11" Padding="10,6" MinimumHeightRequest="32"
                                             Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.DeleteStudentCommand}"
                                             CommandParameter="{Binding .}" />
+
                                 </Grid>
-                            </Frame>
+                            </Border>
                         </DataTemplate>
                     </CollectionView.ItemTemplate>
                 </CollectionView>
+
             </VerticalStackLayout>
         </ScrollView>
 
-        <!-- Edit Student Modal Overlay - Darkening Background -->
-        <BoxView IsVisible="{Binding IsEditingStudent}" 
-                 Color="Black" 
-                 Opacity="0.5"
+        <!-- Modal dimming overlay -->
+        <BoxView IsVisible="{Binding IsEditingStudent}"
+                 Color="{StaticResource AppBackground}"
+                 Opacity="0.75"
                  AbsoluteLayout.LayoutBounds="0,0,1,1"
                  AbsoluteLayout.LayoutFlags="All" />
 
-        <!-- Edit Student Modal Frame -->
-        <Frame IsVisible="{Binding IsEditingStudent}" 
-               Padding="20" 
-               CornerRadius="10"
-               BackgroundColor="#2a2a2a"
-               BorderColor="#4db8e8"
-               AbsoluteLayout.LayoutBounds="0.1,0.3,0.8,0.4"
-               AbsoluteLayout.LayoutFlags="None">
+        <!-- Edit Student modal — centred, fixed size -->
+        <Border IsVisible="{Binding IsEditingStudent}"
+                Style="{StaticResource AccentCard}"
+                AbsoluteLayout.LayoutBounds="0.5,0.4,440,300"
+                AbsoluteLayout.LayoutFlags="PositionProportional">
             <VerticalStackLayout Spacing="12">
-                <Label Text="Edit Student" FontAttributes="Bold" FontSize="18" TextColor="White" />
-
-                <Entry Placeholder="Name" Text="{Binding EditStudentName}" BackgroundColor="Transparent" TextColor="White" PlaceholderColor="#999999" />
-                <Entry Placeholder="Surname" Text="{Binding EditStudentSurname}" BackgroundColor="Transparent" TextColor="White" PlaceholderColor="#999999" />
-                <Entry Placeholder="UID" Text="{Binding EditStudentUid}" BackgroundColor="Transparent" TextColor="White" PlaceholderColor="#999999" />
-
+                <Label Text="EDIT STUDENT" Style="{StaticResource SectionHeader}" Margin="0"/>
+                <Entry Placeholder="First name" Text="{Binding EditStudentName}" />
+                <Entry Placeholder="Surname" Text="{Binding EditStudentSurname}" />
+                <Entry Placeholder="NFC UID" Text="{Binding EditStudentUid}" />
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,8,0,0">
-                    <Button Grid.Column="0" Text="Save" BackgroundColor="#51c400" Command="{Binding SaveEditedStudentCommand}" />
-                    <Button Grid.Column="1" Text="Cancel" BackgroundColor="#cccccc" Command="{Binding CancelEditCommand}" />
+                    <Button Grid.Column="0" Text="SAVE" Command="{Binding SaveEditedStudentCommand}" />
+                    <Button Grid.Column="1" Text="CANCEL" Command="{Binding CancelEditCommand}" Style="{StaticResource SecondaryButton}" />
                 </Grid>
             </VerticalStackLayout>
-        </Frame>
+        </Border>
+
     </AbsoluteLayout>
 </ContentPage>

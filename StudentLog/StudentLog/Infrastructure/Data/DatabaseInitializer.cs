@@ -61,22 +61,6 @@ public class DatabaseInitializer
         await using var attendanceCommand = new MySqlCommand(createAttendanceTable, connection);
         await attendanceCommand.ExecuteNonQueryAsync(cancellationToken);
 
-        try
-        {
-            const string migrateFkCascade = """
-                ALTER TABLE student
-                  DROP FOREIGN KEY FK_student_cohort,
-                  ADD CONSTRAINT FK_student_cohort FOREIGN KEY (cohortId) REFERENCES cohort(Id) ON DELETE CASCADE;
-                """;
-            await using var fkCommand = new MySqlCommand(migrateFkCascade, connection);
-            await fkCommand.ExecuteNonQueryAsync(cancellationToken);
-            _logger.LogInformation("[DB] Student FK cascade migration applied");
-        }
-        catch (MySqlException)
-        {
-            // Migration already applied or FK name differs — safe to ignore
-        }
-
         _logger.LogInformation("[DB] Schema initialisation complete");
 
 #if DEBUG
@@ -90,6 +74,7 @@ public class DatabaseInitializer
         await using var checkCohortsCommand = new MySqlCommand(checkCohortsQuery, connection);
         var cohortCount = Convert.ToInt32(await checkCohortsCommand.ExecuteScalarAsync(cancellationToken));
 
+        bool cohortsJustSeeded = false;
         if (cohortCount == 0)
         {
             _logger.LogInformation("[DB] Seeding test cohorts...");
@@ -102,7 +87,10 @@ public class DatabaseInitializer
 
             await using var insertCohortsCommand = new MySqlCommand(insertCohortsQuery, connection);
             await insertCohortsCommand.ExecuteNonQueryAsync(cancellationToken);
+            cohortsJustSeeded = true;
         }
+
+        if (!cohortsJustSeeded) return;
 
         const string checkStudentsQuery = "SELECT COUNT(*) FROM student;";
         await using var checkStudentsCommand = new MySqlCommand(checkStudentsQuery, connection);

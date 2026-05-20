@@ -7,56 +7,73 @@
              x:DataType="viewModels:StudentHistoryViewModel"
              Title="Student History">
 
-    <Grid RowDefinitions="*,60" RowSpacing="0">
-        <ScrollView Grid.Row="0">
-            <VerticalStackLayout Padding="16" Spacing="12">
-                <Frame Padding="12" BackgroundColor="#2a2a2a" BorderColor="#4db8e8" CornerRadius="8">
-                    <VerticalStackLayout Spacing="4">
-                        <Label Text="{Binding Student.Name, StringFormat='Name: {0}'}" FontSize="16" FontAttributes="Bold" TextColor="White" />
-                        <Label Text="{Binding Student.Surname, StringFormat='Surname: {0}'}" FontSize="14" TextColor="White" />
-                        <Label Text="{Binding Student.UID, StringFormat='UID: {0}'}" FontSize="12" TextColor="#CCCCCC" />
-                    </VerticalStackLayout>
-                </Frame>
-                <Label Text="Attendance History" FontAttributes="Bold" FontSize="16" TextColor="White" />
-                <StackLayout IsVisible="{Binding IsHistoryEmpty}" Padding="20" Spacing="8">
-                    <Label Text="No attendance records found" FontSize="14" TextColor="#999999" HorizontalTextAlignment="Center" />
-                </StackLayout>
-                <CollectionView ItemsSource="{Binding AttendanceHistory}" IsVisible="{Binding IsHistoryNotEmpty}">
-                    <CollectionView.ItemTemplate>
-                        <DataTemplate x:DataType="models:AttendanceRecord">
-                            <Frame Padding="12" Margin="0,4" BackgroundColor="Transparent" BorderColor="#4db8e8" CornerRadius="8">
-                                <VerticalStackLayout Spacing="6">
-                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                        <Label Grid.Column="0" Text="Sign In:" FontSize="12" FontAttributes="Bold" TextColor="#4db8e8" />
-                                        <Label Grid.Column="1" Text="{Binding FormattedSignInTime}" FontSize="12" TextColor="White" />
-                                    </Grid>
-                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                        <Label Grid.Column="0" Text="Sign Out:" FontSize="12" FontAttributes="Bold" TextColor="#4db8e8" />
-                                        <Label Grid.Column="1" Text="{Binding FormattedSignOutTime}" FontSize="12" TextColor="White" />
-                                    </Grid>
-                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                        <Label Grid.Column="0" Text="Duration:" FontSize="12" FontAttributes="Bold" TextColor="#51c400" />
-                                        <Label Grid.Column="1" Text="{Binding FormattedDuration}" FontSize="12" TextColor="#51c400" />
-                                    </Grid>
-                                </VerticalStackLayout>
-                            </Frame>
-                        </DataTemplate>
-                    </CollectionView.ItemTemplate>
-                </CollectionView>
-            </VerticalStackLayout>
-        </ScrollView>
-        <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="8" Padding="16,8">
-            <Button Grid.Column="0"
-                    Text="Back to Students"
-                    Command="{Binding BackCommand}"
-                    BackgroundColor="#4db8e8"
-                    TextColor="White" />
-            <Button Grid.Column="1"
-                    Text="Download CSV"
-                    Command="{Binding ExportCsvCommand}"
-                    BackgroundColor="#51c400"
-                    TextColor="White" />
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Padding="16" RowSpacing="0">
+
+        <!-- Student identity card -->
+        <Border Grid.Row="0" Style="{StaticResource AccentCard}" Margin="0,8,0,0">
+            <Grid ColumnDefinitions="*" ColumnSpacing="16">
+                <VerticalStackLayout Grid.Column="0" Spacing="4">
+                    <StackLayout Orientation="Horizontal" Spacing="8">
+                        <Label Text="{Binding Student.Name}" FontFamily="OpenSansSemibold" FontSize="20" />
+                        <Label Text="{Binding Student.Surname}" FontSize="20" TextColor="{StaticResource TextSecondary}" />
+                    </StackLayout>
+                    <Label Text="{Binding Student.UID}" Style="{StaticResource MutedLabel}" />
+                </VerticalStackLayout>
+            </Grid>
+        </Border>
+
+        <Label Grid.Row="1" Text="Attendance History" Style="{StaticResource SectionHeader}"/>
+
+        <!-- Empty state -->
+        <Label Grid.Row="2"
+               Text="No attendance records found."
+               Style="{StaticResource MutedLabel}"
+               IsVisible="{Binding IsHistoryEmpty}"
+               HorizontalTextAlignment="Center"
+               VerticalOptions="Center" />
+
+        <!-- History list -->
+        <CollectionView Grid.Row="2" ItemsSource="{Binding AttendanceHistory}" IsVisible="{Binding IsHistoryNotEmpty}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="models:AttendanceRecord">
+                    <Border Style="{StaticResource Card}">
+                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="16">
+
+                            <VerticalStackLayout Grid.Column="0" Spacing="4">
+                                <Label Text="SIGN IN" Style="{StaticResource MutedLabel}" />
+                                <Label Text="{Binding FormattedSignInTime}"
+                                       FontFamily="OpenSansSemibold"
+                                       FontSize="13"
+                                       TextColor="{StaticResource AccentTeal}" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Grid.Column="1" Spacing="4">
+                                <Label Text="SIGN OUT" Style="{StaticResource MutedLabel}" />
+                                <Label Text="{Binding FormattedSignOutTime}"
+                                       FontFamily="OpenSansSemibold"
+                                       FontSize="13"
+                                       TextColor="{StaticResource TextSecondary}" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Grid.Column="2" Spacing="4">
+                                <Label Text="DURATION" Style="{StaticResource MutedLabel}" />
+                                <Label Text="{Binding FormattedDuration}"
+                                       FontFamily="OpenSansSemibold"
+                                       FontSize="13"
+                                       TextColor="{StaticResource AccentGreen}" />
+                            </VerticalStackLayout>
+
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <!-- Bottom actions -->
+        <Grid Grid.Row="3" ColumnDefinitions="*,*" ColumnSpacing="12" Margin="0,12,0,8">
+            <Button Grid.Column="0" Text="BACK TO STUDENTS" Command="{Binding BackCommand}" Style="{StaticResource SecondaryButton}" />
+            <Button Grid.Column="1" Text="DOWNLOAD CSV" Command="{Binding ExportCsvCommand}" Style="{StaticResource SuccessButton}" />
         </Grid>
+
     </Grid>
 </ContentPage>
- 
