@@ -61,6 +61,24 @@ public class DatabaseInitializer
         await using var attendanceCommand = new MySqlCommand(createAttendanceTable, connection);
         await attendanceCommand.ExecuteNonQueryAsync(cancellationToken);
 
+        const string addCohortSoundColumns = """
+            ALTER TABLE cohort
+              ADD COLUMN IF NOT EXISTS ClockInSoundPath  VARCHAR(500) NULL,
+              ADD COLUMN IF NOT EXISTS ClockOutSoundPath VARCHAR(500) NULL;
+            """;
+
+        await using var cohortSoundCommand = new MySqlCommand(addCohortSoundColumns, connection);
+        await cohortSoundCommand.ExecuteNonQueryAsync(cancellationToken);
+
+        const string addStudentSoundColumns = """
+            ALTER TABLE student
+              ADD COLUMN IF NOT EXISTS ClockInSoundPath  VARCHAR(500) NULL,
+              ADD COLUMN IF NOT EXISTS ClockOutSoundPath VARCHAR(500) NULL;
+            """;
+
+        await using var studentSoundCommand = new MySqlCommand(addStudentSoundColumns, connection);
+        await studentSoundCommand.ExecuteNonQueryAsync(cancellationToken);
+
         _logger.LogInformation("[DB] Schema initialisation complete");
 
 #if DEBUG
