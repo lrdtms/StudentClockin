@@ -1,4 +1,5 @@
 ﻿using Microsoft.UI.Xaml;
+using StudentLog.Platforms.Windows;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -20,6 +21,15 @@ namespace StudentLog.WinUI
         }
 
         protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();
+
+        protected override void OnLaunched(LaunchActivatedEventArgs args)
+        {
+            base.OnLaunched(args);
+            WindowsSoundSuppressor.Suppress();
+
+            // Restore sounds on any exit path: normal window close, task-kill, etc.
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => WindowsSoundSuppressor.Restore();
+        }
     }
 
 }
