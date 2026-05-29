@@ -112,7 +112,9 @@ public partial class CheckInSessionViewModel : ObservableObject
                             _logger.LogInformation("[VM] Attendance recorded for {Name} {Surname}",
                                 result.Student.Name, result.Student.Surname);
                             WeakReferenceMessenger.Default.Send(new AttendanceRecordedMessage(result.Student.CohortId, result.Timestamp ?? DateTime.Now));
-                            _ = _soundService.PlayAsync(result.Student, SelectedCohort!, SelectedSessionType);
+                            _ = _soundService.PlayAsync(result.Student, SelectedCohort!, SelectedSessionType)
+                                .ContinueWith(t => _logger.LogWarning(t.Exception, "[SOUND] Playback failed"),
+                                    TaskContinuationOptions.OnlyOnFaulted);
                             return;
                         }
 
