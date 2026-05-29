@@ -31,12 +31,7 @@ public class SoundService : ISoundService
     {
         var options = new PickOptions
         {
-            PickerTitle = "Select a sound file",
-            FileTypes = new FilePickerFileType(new Dictionary<DevicePlatform, IEnumerable<string>>
-            {
-                { DevicePlatform.WinUI, new[] { ".mp3", ".wav", ".m4a", ".ogg", ".flac" } },
-                { DevicePlatform.macOS, new[] { "mp3", "wav", "m4a", "ogg", "flac" } },
-            })
+            PickerTitle = "Select a sound file (MP3, WAV, M4A, OGG, FLAC)"
         };
 
         var result = await FilePicker.Default.PickAsync(options);
