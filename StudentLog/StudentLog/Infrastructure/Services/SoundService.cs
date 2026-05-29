@@ -23,7 +23,7 @@ public class SoundService : ISoundService
             return;
 
         await using var stream = File.OpenRead(path);
-        var player = _audioManager.CreateAsyncPlayer(stream);
+        using var player = _audioManager.CreateAsyncPlayer(stream);
         await player.PlayAsync(CancellationToken.None);
     }
 
