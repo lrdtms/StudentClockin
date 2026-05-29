@@ -22,17 +22,13 @@ public class CohortRepository : ICohortRepository
         var result = new List<Cohort>();
         await using var connection = await OpenAsync(cancellationToken);
 
-        const string sql = "SELECT Id, Name FROM cohort ORDER BY Name;";
+        const string sql = "SELECT Id, Name, ClockInSoundPath, ClockOutSoundPath FROM cohort ORDER BY Name;";
         await using var command = new MySqlCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
         while (await reader.ReadAsync(cancellationToken))
         {
-            result.Add(new Cohort
-            {
-                Id = reader.GetInt32("Id"),
-                Name = reader.GetString("Name")
-            });
+            result.Add(MapCohort(reader));
         }
 
         return result;
@@ -54,22 +50,16 @@ public class CohortRepository : ICohortRepository
     public async Task<Cohort?> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
-        const string sql = "SELECT Id, Name FROM cohort WHERE Id = @id LIMIT 1;";
+        const string sql = "SELECT Id, Name, ClockInSoundPath, ClockOutSoundPath FROM cohort WHERE Id = @id LIMIT 1;";
 
         await using var command = new MySqlCommand(sql, connection);
         command.Parameters.AddWithValue("@id", id);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
         if (!await reader.ReadAsync(cancellationToken))
-        {
             return null;
-        }
 
-        return new Cohort
-        {
-            Id = reader.GetInt32("Id"),
-            Name = reader.GetString("Name")
-        };
+        return MapCohort(reader);
     }
 
     public async Task DeleteAsync(int id, CancellationToken cancellationToken = default)
@@ -89,4 +79,32 @@ public class CohortRepository : ICohortRepository
 
         await transaction.CommitAsync(cancellationToken);
     }
+
+    public async Task UpdateAsync(Cohort cohort, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        const string sql = """
+            UPDATE cohort
+            SET Name = @name,
+                ClockInSoundPath  = @clockIn,
+                ClockOutSoundPath = @clockOut
+            WHERE Id = @id;
+            """;
+
+        await using var command = new MySqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@name", cohort.Name);
+        command.Parameters.AddWithValue("@clockIn", (object?)cohort.ClockInSoundPath ?? DBNull.Value);
+        command.Parameters.AddWithValue("@clockOut", (object?)cohort.ClockOutSoundPath ?? DBNull.Value);
+        command.Parameters.AddWithValue("@id", cohort.Id);
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static Cohort MapCohort(MySqlDataReader reader) => new()
+    {
+        Id = reader.GetInt32("Id"),
+        Name = reader.GetString("Name"),
+        ClockInSoundPath  = reader.IsDBNull(reader.GetOrdinal("ClockInSoundPath"))  ? null : reader.GetString("ClockInSoundPath"),
+        ClockOutSoundPath = reader.IsDBNull(reader.GetOrdinal("ClockOutSoundPath")) ? null : reader.GetString("ClockOutSoundPath"),
+    };
 }

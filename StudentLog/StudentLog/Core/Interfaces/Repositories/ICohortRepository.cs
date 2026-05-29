@@ -8,4 +8,5 @@ public interface ICohortRepository
     Task<int> AddAsync(Cohort cohort, CancellationToken cancellationToken = default);
     Task<Cohort?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
     Task DeleteAsync(int id, CancellationToken cancellationToken = default);
+    Task UpdateAsync(Cohort cohort, CancellationToken cancellationToken = default);
 }
