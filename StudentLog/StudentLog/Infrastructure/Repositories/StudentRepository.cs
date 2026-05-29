@@ -26,38 +26,32 @@ public class StudentRepository : IStudentRepository
         var result = new List<Student>();
         await using var connection = await OpenAsync(cancellationToken);
 
-        var sql = "SELECT Id, UID, cohortId, SignInTime, SignOutTime, name, surname FROM student";
+        var sql = "SELECT Id, UID, cohortId, SignInTime, SignOutTime, name, surname, ClockInSoundPath, ClockOutSoundPath FROM student";
         if (cohortId.HasValue)
-        {
             sql += " WHERE cohortId = @cohortId";
-        }
-
         sql += " ORDER BY surname, name;";
 
         await using var command = new MySqlCommand(sql, connection);
         if (cohortId.HasValue)
-        {
             command.Parameters.AddWithValue("@cohortId", cohortId.Value);
-        }
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
-        {
             result.Add(MapStudent(reader));
-        }
 
         return result;
     }
 
     public async Task<IReadOnlyList<Student>> GetByCohortAsync(int cohortId, CancellationToken cancellationToken = default)
-    {
-        return await GetAllAsync(cohortId, cancellationToken);
-    }
+        => await GetAllAsync(cohortId, cancellationToken);
 
     public async Task<Student?> GetByIdAsync(int studentId, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
-        const string sql = "SELECT Id, UID, cohortId, SignInTime, SignOutTime, name, surname FROM student WHERE Id = @id LIMIT 1;";
+        const string sql = """
+            SELECT Id, UID, cohortId, SignInTime, SignOutTime, name, surname, ClockInSoundPath, ClockOutSoundPath
+            FROM student WHERE Id = @id LIMIT 1;
+            """;
 
         await using var command = new MySqlCommand(sql, connection);
         command.Parameters.AddWithValue("@id", studentId);
@@ -72,16 +66,17 @@ public class StudentRepository : IStudentRepository
     public async Task<Student?> GetByUidAsync(string uid, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
-        const string sql = "SELECT Id, UID, cohortId, SignInTime, SignOutTime, name, surname FROM student WHERE UID = @uid LIMIT 1;";
+        const string sql = """
+            SELECT Id, UID, cohortId, SignInTime, SignOutTime, name, surname, ClockInSoundPath, ClockOutSoundPath
+            FROM student WHERE UID = @uid LIMIT 1;
+            """;
 
         await using var command = new MySqlCommand(sql, connection);
         command.Parameters.AddWithValue("@uid", uid);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
-        {
             return null;
-        }
 
         return MapStudent(reader);
     }
@@ -90,8 +85,8 @@ public class StudentRepository : IStudentRepository
     {
         await using var connection = await OpenAsync(cancellationToken);
         const string sql = """
-            INSERT INTO student (UID, cohortId, SignInTime, SignOutTime, name, surname)
-            VALUES (@uid, @cohortId, @signInTime, @signOutTime, @name, @surname);
+            INSERT INTO student (UID, cohortId, SignInTime, SignOutTime, name, surname, ClockInSoundPath, ClockOutSoundPath)
+            VALUES (@uid, @cohortId, @signInTime, @signOutTime, @name, @surname, @clockIn, @clockOut);
             SELECT LAST_INSERT_ID();
             """;
 
@@ -102,6 +97,8 @@ public class StudentRepository : IStudentRepository
         command.Parameters.AddWithValue("@signOutTime", student.SignOutTime);
         command.Parameters.AddWithValue("@name", student.Name);
         command.Parameters.AddWithValue("@surname", student.Surname);
+        command.Parameters.AddWithValue("@clockIn", (object?)student.ClockInSoundPath ?? DBNull.Value);
+        command.Parameters.AddWithValue("@clockOut", (object?)student.ClockOutSoundPath ?? DBNull.Value);
 
         var id = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
         student.Id = id;
@@ -206,13 +203,20 @@ public class StudentRepository : IStudentRepository
     public async Task<int> UpdateAsync(Student student, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
-        const string sql = "UPDATE student SET UID = @uid, name = @name, surname = @surname, cohortId = @cohortId WHERE Id = @id;";
+        const string sql = """
+            UPDATE student
+            SET UID = @uid, name = @name, surname = @surname, cohortId = @cohortId,
+                ClockInSoundPath = @clockIn, ClockOutSoundPath = @clockOut
+            WHERE Id = @id;
+            """;
 
         await using var command = new MySqlCommand(sql, connection);
         command.Parameters.AddWithValue("@uid", student.UID);
         command.Parameters.AddWithValue("@name", student.Name);
         command.Parameters.AddWithValue("@surname", student.Surname);
         command.Parameters.AddWithValue("@cohortId", student.CohortId);
+        command.Parameters.AddWithValue("@clockIn", (object?)student.ClockInSoundPath ?? DBNull.Value);
+        command.Parameters.AddWithValue("@clockOut", (object?)student.ClockOutSoundPath ?? DBNull.Value);
         command.Parameters.AddWithValue("@id", student.Id);
 
         return await command.ExecuteNonQueryAsync(cancellationToken);
@@ -224,7 +228,9 @@ public class StudentRepository : IStudentRepository
         await using var connection = await OpenAsync(cancellationToken);
 
         const string sql = """
-            SELECT s.Id, s.UID, s.cohortId, s.name, s.surname, a.SignInTime, a.SignOutTime
+            SELECT s.Id, s.UID, s.cohortId, s.name, s.surname,
+                   s.ClockInSoundPath, s.ClockOutSoundPath,
+                   a.SignInTime, a.SignOutTime
             FROM attendance a
             INNER JOIN student s ON s.Id = a.StudentId
             WHERE s.cohortId = @cohortId AND DATE(a.SessionDate) = DATE(@sessionDate)
@@ -237,9 +243,7 @@ public class StudentRepository : IStudentRepository
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
-        {
             result.Add(MapStudent(reader));
-        }
 
         return result;
     }
@@ -250,7 +254,9 @@ public class StudentRepository : IStudentRepository
         await using var connection = await OpenAsync(cancellationToken);
 
         const string sql = """
-            SELECT DISTINCT s.Id, s.UID, s.cohortId, s.name, s.surname, a.SignInTime, a.SignOutTime
+            SELECT DISTINCT s.Id, s.UID, s.cohortId, s.name, s.surname,
+                   s.ClockInSoundPath, s.ClockOutSoundPath,
+                   a.SignInTime, a.SignOutTime
             FROM student s
             INNER JOIN attendance a ON a.StudentId = s.Id
             WHERE s.cohortId = @cohortId
@@ -265,9 +271,7 @@ public class StudentRepository : IStudentRepository
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
-        {
             result.Add(MapStudent(reader));
-        }
 
         return result;
     }
@@ -304,17 +308,16 @@ public class StudentRepository : IStudentRepository
         return result;
     }
 
-    private static Student MapStudent(MySqlDataReader reader)
+    private static Student MapStudent(MySqlDataReader reader) => new()
     {
-        return new Student
-        {
-            Id = reader.GetInt32("Id"),
-            UID = reader.GetString("UID"),
-            CohortId = reader.GetInt32("cohortId"),
-            SignInTime = reader.IsDBNull(reader.GetOrdinal("SignInTime")) ? null : reader.GetDateTime("SignInTime"),
-            SignOutTime = reader.IsDBNull(reader.GetOrdinal("SignOutTime")) ? null : reader.GetDateTime("SignOutTime"),
-            Name = reader.GetString("name"),
-            Surname = reader.GetString("surname")
-        };
-    }
+        Id = reader.GetInt32("Id"),
+        UID = reader.GetString("UID"),
+        CohortId = reader.GetInt32("cohortId"),
+        SignInTime = reader.IsDBNull(reader.GetOrdinal("SignInTime")) ? null : reader.GetDateTime("SignInTime"),
+        SignOutTime = reader.IsDBNull(reader.GetOrdinal("SignOutTime")) ? null : reader.GetDateTime("SignOutTime"),
+        Name = reader.GetString("name"),
+        Surname = reader.GetString("surname"),
+        ClockInSoundPath  = reader.IsDBNull(reader.GetOrdinal("ClockInSoundPath"))  ? null : reader.GetString("ClockInSoundPath"),
+        ClockOutSoundPath = reader.IsDBNull(reader.GetOrdinal("ClockOutSoundPath")) ? null : reader.GetString("ClockOutSoundPath"),
+    };
 }
