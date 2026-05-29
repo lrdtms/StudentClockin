@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using StudentLog.Application.Interfaces;
 using StudentLog.Infrastructure.Data;
 
 namespace StudentLog
@@ -7,14 +8,16 @@ namespace StudentLog
     {
         private readonly AppShell _appShell;
         private readonly DatabaseInitializer _databaseInitializer;
+        private readonly IDatabaseInitializationTracker _dbTracker;
         private readonly ILogger<App> _logger;
         private bool _databaseInitializationStarted;
 
-        public App(AppShell appShell, DatabaseInitializer databaseInitializer, ILogger<App> logger)
+        public App(AppShell appShell, DatabaseInitializer databaseInitializer, IDatabaseInitializationTracker dbTracker, ILogger<App> logger)
         {
             InitializeComponent();
             _appShell = appShell;
             _databaseInitializer = databaseInitializer;
+            _dbTracker = dbTracker;
             _logger = logger;
 
             TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
@@ -51,6 +54,10 @@ namespace StudentLog
                         "Could not connect to MySQL. The app opened, but data features may not work until the database is reachable.",
                         "OK");
                 }
+            }
+            finally
+            {
+                _dbTracker.SignalComplete();
             }
         }
 

@@ -13,6 +13,7 @@ public partial class StudentsViewModel : ObservableObject
     private readonly INfcService _nfcService;
     private readonly IDialogService _dialogService;
     private readonly ISoundService _soundService;
+    private readonly IDatabaseInitializationTracker _dbTracker;
 
     public ObservableCollection<Cohort> Cohorts { get; } = new();
     public ObservableCollection<Student> AllStudentsForCohort { get; } = new();
@@ -60,18 +61,21 @@ public partial class StudentsViewModel : ObservableObject
         ICohortService cohortService,
         INfcService nfcService,
         IDialogService dialogService,
-        ISoundService soundService)
+        ISoundService soundService,
+        IDatabaseInitializationTracker dbTracker)
     {
         _studentService = studentService;
         _cohortService = cohortService;
         _nfcService = nfcService;
         _dialogService = dialogService;
         _soundService = soundService;
+        _dbTracker = dbTracker;
     }
 
     [RelayCommand]
     public async Task LoadAsync()
     {
+        await _dbTracker.WaitAsync();
         Cohorts.Clear();
         var cohorts = await _cohortService.GetCohortsAsync();
         foreach (var cohort in cohorts)

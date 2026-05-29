@@ -16,6 +16,7 @@ public partial class CheckInSessionViewModel : ObservableObject
     private readonly INfcService _nfcService;
     private readonly IAttendanceService _attendanceService;
     private readonly ISoundService _soundService;
+    private readonly IDatabaseInitializationTracker _dbTracker;
     private readonly ILogger<CheckInSessionViewModel> _logger;
 
     public ObservableCollection<Cohort> Cohorts { get; } = new();
@@ -45,6 +46,7 @@ public partial class CheckInSessionViewModel : ObservableObject
         INfcService nfcService,
         IAttendanceService attendanceService,
         ISoundService soundService,
+        IDatabaseInitializationTracker dbTracker,
         ILogger<CheckInSessionViewModel> logger)
     {
         _cohortService = cohortService;
@@ -52,12 +54,14 @@ public partial class CheckInSessionViewModel : ObservableObject
         _nfcService = nfcService;
         _attendanceService = attendanceService;
         _soundService = soundService;
+        _dbTracker = dbTracker;
         _logger = logger;
     }
 
     [RelayCommand]
     public async Task LoadAsync()
     {
+        await _dbTracker.WaitAsync();
         Cohorts.Clear();
         var cohorts = await _cohortService.GetCohortsAsync();
         foreach (var cohort in cohorts)

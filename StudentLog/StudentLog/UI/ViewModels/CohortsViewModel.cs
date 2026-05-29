@@ -17,6 +17,7 @@ public partial class CohortsViewModel : ObservableObject
     private readonly IDialogService _dialogService;
     private readonly ISoundService _soundService;
     private readonly ISoundConfigService _soundConfigService;
+    private readonly IDatabaseInitializationTracker _dbTracker;
     private readonly ILogger<CohortsViewModel> _logger;
 
     public ObservableCollection<Cohort> Cohorts { get; } = new();
@@ -53,6 +54,7 @@ public partial class CohortsViewModel : ObservableObject
         IDialogService dialogService,
         ISoundService soundService,
         ISoundConfigService soundConfigService,
+        IDatabaseInitializationTracker dbTracker,
         ILogger<CohortsViewModel> logger)
     {
         _cohortService = cohortService;
@@ -61,6 +63,7 @@ public partial class CohortsViewModel : ObservableObject
         _dialogService = dialogService;
         _soundService = soundService;
         _soundConfigService = soundConfigService;
+        _dbTracker = dbTracker;
         _logger = logger;
 
         WeakReferenceMessenger.Default.Register<AttendanceRecordedMessage>(this, async (recipient, message) =>
@@ -80,6 +83,7 @@ public partial class CohortsViewModel : ObservableObject
     [RelayCommand]
     public async Task LoadAsync()
     {
+        await _dbTracker.WaitAsync();
         Cohorts.Clear();
         var cohorts = await _cohortService.GetCohortsAsync();
         foreach (var cohort in cohorts)

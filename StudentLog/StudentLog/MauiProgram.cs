@@ -51,6 +51,7 @@ namespace StudentLog
             builder.Services.AddSingleton<IDialogService, MauiDialogService>();
             builder.Services.AddSingleton<ISoundService, SoundService>();
             builder.Services.AddSingleton<ISoundConfigService, SoundConfigService>();
+            builder.Services.AddSingleton<IDatabaseInitializationTracker, DatabaseInitializationTracker>();
 
 #if WINDOWS
             builder.Services.AddTransient<ICsvExportService, CsvExportService>();
