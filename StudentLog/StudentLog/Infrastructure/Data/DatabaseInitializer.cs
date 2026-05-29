@@ -61,23 +61,10 @@ public class DatabaseInitializer
         await using var attendanceCommand = new MySqlCommand(createAttendanceTable, connection);
         await attendanceCommand.ExecuteNonQueryAsync(cancellationToken);
 
-        const string addCohortSoundColumns = """
-            ALTER TABLE cohort
-              ADD COLUMN IF NOT EXISTS ClockInSoundPath  VARCHAR(500) NULL,
-              ADD COLUMN IF NOT EXISTS ClockOutSoundPath VARCHAR(500) NULL;
-            """;
-
-        await using var cohortSoundCommand = new MySqlCommand(addCohortSoundColumns, connection);
-        await cohortSoundCommand.ExecuteNonQueryAsync(cancellationToken);
-
-        const string addStudentSoundColumns = """
-            ALTER TABLE student
-              ADD COLUMN IF NOT EXISTS ClockInSoundPath  VARCHAR(500) NULL,
-              ADD COLUMN IF NOT EXISTS ClockOutSoundPath VARCHAR(500) NULL;
-            """;
-
-        await using var studentSoundCommand = new MySqlCommand(addStudentSoundColumns, connection);
-        await studentSoundCommand.ExecuteNonQueryAsync(cancellationToken);
+        await AddColumnIfMissingAsync(connection, "cohort",  "ClockInSoundPath",  "VARCHAR(500) NULL", cancellationToken);
+        await AddColumnIfMissingAsync(connection, "cohort",  "ClockOutSoundPath", "VARCHAR(500) NULL", cancellationToken);
+        await AddColumnIfMissingAsync(connection, "student", "ClockInSoundPath",  "VARCHAR(500) NULL", cancellationToken);
+        await AddColumnIfMissingAsync(connection, "student", "ClockOutSoundPath", "VARCHAR(500) NULL", cancellationToken);
 
         _logger.LogInformation("[DB] Schema initialisation complete");
 
@@ -130,5 +117,31 @@ public class DatabaseInitializer
 
             _logger.LogInformation("[DB] Test data seeded successfully");
         }
+    }
+
+    private static async Task AddColumnIfMissingAsync(
+        MySqlConnection connection,
+        string table,
+        string column,
+        string definition,
+        CancellationToken cancellationToken)
+    {
+        const string checkSql = """
+            SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME   = @table
+              AND COLUMN_NAME  = @column;
+            """;
+
+        await using var checkCmd = new MySqlCommand(checkSql, connection);
+        checkCmd.Parameters.AddWithValue("@table", table);
+        checkCmd.Parameters.AddWithValue("@column", column);
+        var exists = Convert.ToInt32(await checkCmd.ExecuteScalarAsync(cancellationToken)) > 0;
+
+        if (exists) return;
+
+        await using var alterCmd = new MySqlCommand(
+            $"ALTER TABLE `{table}` ADD COLUMN `{column}` {definition};", connection);
+        await alterCmd.ExecuteNonQueryAsync(cancellationToken);
     }
 }
