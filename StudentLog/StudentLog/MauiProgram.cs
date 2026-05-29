@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Plugin.Maui.Audio;
 using StudentLog.Application.Interfaces;
 using StudentLog.Application.Services;
 using StudentLog.Core.Interfaces;
@@ -22,7 +23,8 @@ namespace StudentLog
         {
             var builder = MauiApp.CreateBuilder();
             builder
-                .UseMauiApp<App>();
+                .UseMauiApp<App>()
+                .AddAudio();
 
             builder.Logging.AddDebug();
 
@@ -47,6 +49,9 @@ namespace StudentLog
             builder.Services.AddSingleton<ISessionStateService, SessionStateService>();
             builder.Services.AddSingleton<INfcService, NfcService>();
             builder.Services.AddSingleton<IDialogService, MauiDialogService>();
+            builder.Services.AddSingleton<ISoundService, SoundService>();
+            builder.Services.AddSingleton<ISoundConfigService, SoundConfigService>();
+            builder.Services.AddSingleton<IDatabaseInitializationTracker, DatabaseInitializationTracker>();
 
 #if WINDOWS
             builder.Services.AddTransient<ICsvExportService, CsvExportService>();

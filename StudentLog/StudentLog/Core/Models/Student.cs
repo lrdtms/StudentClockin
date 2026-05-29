@@ -15,4 +15,8 @@ public class Student
     public string Name { get; set; } = string.Empty;
 
     public string Surname { get; set; } = string.Empty;
+
+    public string? ClockInSoundPath { get; set; }
+
+    public string? ClockOutSoundPath { get; set; }
 }

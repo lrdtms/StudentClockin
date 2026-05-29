@@ -28,13 +28,34 @@
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="models:Cohort">
                         <Border Style="{StaticResource Card}" Margin="0,2">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                <Label Grid.Column="0"
+                            <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="2">
+
+                                <!-- Row 0: Name and action buttons -->
+                                <Label Grid.Row="0" Grid.Column="0"
                                        Text="{Binding Name}"
                                        FontFamily="OpenSansSemibold"
                                        FontSize="14"
                                        VerticalOptions="Center" />
-                                <Button Grid.Column="1"
+
+                                <Button Grid.Row="0" Grid.Column="1"
+                                        Text="SOUND IN"
+                                        Style="{StaticResource SecondaryButton}"
+                                        FontSize="10"
+                                        Padding="8,4"
+                                        MinimumHeightRequest="28"
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:CohortsViewModel}}, Path=SetCohortClockInSoundCommand}"
+                                        CommandParameter="{Binding .}" />
+
+                                <Button Grid.Row="0" Grid.Column="2"
+                                        Text="SOUND OUT"
+                                        Style="{StaticResource SecondaryButton}"
+                                        FontSize="10"
+                                        Padding="8,4"
+                                        MinimumHeightRequest="28"
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:CohortsViewModel}}, Path=SetCohortClockOutSoundCommand}"
+                                        CommandParameter="{Binding .}" />
+
+                                <Button Grid.Row="0" Grid.Column="3"
                                         Text="DELETE"
                                         Style="{StaticResource DangerButton}"
                                         FontSize="11"
@@ -42,6 +63,20 @@
                                         MinimumHeightRequest="32"
                                         Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:CohortsViewModel}}, Path=DeleteCohortCommand}"
                                         CommandParameter="{Binding .}" />
+
+                                <!-- Row 1: Current sound filenames -->
+                                <StackLayout Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
+                                             Orientation="Horizontal" Spacing="12">
+                                    <Label Text="{Binding ClockInSoundPath, Converter={StaticResource PathToFileNameConverter}, StringFormat='In: {0}'}"
+                                           Style="{StaticResource MutedLabel}"
+                                           FontSize="11"
+                                           IsVisible="{Binding ClockInSoundPath, Converter={StaticResource StringToBoolConverter}}" />
+                                    <Label Text="{Binding ClockOutSoundPath, Converter={StaticResource PathToFileNameConverter}, StringFormat='Out: {0}'}"
+                                           Style="{StaticResource MutedLabel}"
+                                           FontSize="11"
+                                           IsVisible="{Binding ClockOutSoundPath, Converter={StaticResource StringToBoolConverter}}" />
+                                </StackLayout>
+
                             </Grid>
                         </Border>
                     </DataTemplate>

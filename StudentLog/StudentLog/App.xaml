@@ -14,6 +14,7 @@
             <!-- Converters -->
             <converters:StringToBoolConverter x:Key="StringToBoolConverter" />
             <converters:SignInStatusConverter x:Key="SignInStatusConverter" />
+            <converters:PathToFileNameConverter x:Key="PathToFileNameConverter" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

@@ -15,6 +15,8 @@ public partial class CheckInSessionViewModel : ObservableObject
     private readonly ISessionStateService _sessionStateService;
     private readonly INfcService _nfcService;
     private readonly IAttendanceService _attendanceService;
+    private readonly ISoundService _soundService;
+    private readonly IDatabaseInitializationTracker _dbTracker;
     private readonly ILogger<CheckInSessionViewModel> _logger;
 
     public ObservableCollection<Cohort> Cohorts { get; } = new();
@@ -43,18 +45,23 @@ public partial class CheckInSessionViewModel : ObservableObject
         ISessionStateService sessionStateService,
         INfcService nfcService,
         IAttendanceService attendanceService,
+        ISoundService soundService,
+        IDatabaseInitializationTracker dbTracker,
         ILogger<CheckInSessionViewModel> logger)
     {
         _cohortService = cohortService;
         _sessionStateService = sessionStateService;
         _nfcService = nfcService;
         _attendanceService = attendanceService;
+        _soundService = soundService;
+        _dbTracker = dbTracker;
         _logger = logger;
     }
 
     [RelayCommand]
     public async Task LoadAsync()
     {
+        await _dbTracker.WaitAsync();
         Cohorts.Clear();
         var cohorts = await _cohortService.GetCohortsAsync();
         foreach (var cohort in cohorts)
@@ -109,6 +116,9 @@ public partial class CheckInSessionViewModel : ObservableObject
                             _logger.LogInformation("[VM] Attendance recorded for {Name} {Surname}",
                                 result.Student.Name, result.Student.Surname);
                             WeakReferenceMessenger.Default.Send(new AttendanceRecordedMessage(result.Student.CohortId, result.Timestamp ?? DateTime.Now));
+                            _ = _soundService.PlayAsync(result.Student, SelectedCohort!, SelectedSessionType)
+                                .ContinueWith(t => _logger.LogWarning(t.Exception, "[SOUND] Playback failed"),
+                                    TaskContinuationOptions.OnlyOnFaulted);
                             return;
                         }
 

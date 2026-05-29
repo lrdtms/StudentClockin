@@ -90,13 +90,41 @@
         <!-- Edit Student modal — centred, fixed size -->
         <Border IsVisible="{Binding IsEditingStudent}"
                 Style="{StaticResource AccentCard}"
-                AbsoluteLayout.LayoutBounds="0.5,0.4,440,300"
+                AbsoluteLayout.LayoutBounds="0.5,0.4,440,400"
                 AbsoluteLayout.LayoutFlags="PositionProportional">
             <VerticalStackLayout Spacing="12">
                 <Label Text="EDIT STUDENT" Style="{StaticResource SectionHeader}" Margin="0"/>
                 <Entry Placeholder="First name" Text="{Binding EditStudentName}" />
                 <Entry Placeholder="Surname" Text="{Binding EditStudentSurname}" />
                 <Entry Placeholder="NFC UID" Text="{Binding EditStudentUid}" />
+                <!-- Clock-in sound -->
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <Label Grid.Column="0"
+                           Text="{Binding EditStudentClockInSoundPath, Converter={StaticResource PathToFileNameConverter}, TargetNullValue='(no clock-in sound)', FallbackValue='(no clock-in sound)'}"
+                           Style="{StaticResource MutedLabel}"
+                           VerticalOptions="Center" />
+                    <Button Grid.Column="1"
+                            Text="UPLOAD"
+                            Style="{StaticResource SecondaryButton}"
+                            FontSize="11"
+                            Padding="10,6"
+                            MinimumHeightRequest="32"
+                            Command="{Binding SetStudentClockInSoundCommand}" />
+                </Grid>
+                <!-- Clock-out sound -->
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <Label Grid.Column="0"
+                           Text="{Binding EditStudentClockOutSoundPath, Converter={StaticResource PathToFileNameConverter}, TargetNullValue='(no clock-out sound)', FallbackValue='(no clock-out sound)'}"
+                           Style="{StaticResource MutedLabel}"
+                           VerticalOptions="Center" />
+                    <Button Grid.Column="1"
+                            Text="UPLOAD"
+                            Style="{StaticResource SecondaryButton}"
+                            FontSize="11"
+                            Padding="10,6"
+                            MinimumHeightRequest="32"
+                            Command="{Binding SetStudentClockOutSoundCommand}" />
+                </Grid>
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,8,0,0">
                     <Button Grid.Column="0" Text="SAVE" Command="{Binding SaveEditedStudentCommand}" />
                     <Button Grid.Column="1" Text="CANCEL" Command="{Binding CancelEditCommand}" Style="{StaticResource SecondaryButton}" />

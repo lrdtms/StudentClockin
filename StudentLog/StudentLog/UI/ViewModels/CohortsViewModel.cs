@@ -15,6 +15,9 @@ public partial class CohortsViewModel : ObservableObject
     private readonly IStudentService _studentService;
     private readonly ICsvExportService _csvExportService;
     private readonly IDialogService _dialogService;
+    private readonly ISoundService _soundService;
+    private readonly ISoundConfigService _soundConfigService;
+    private readonly IDatabaseInitializationTracker _dbTracker;
     private readonly ILogger<CohortsViewModel> _logger;
 
     public ObservableCollection<Cohort> Cohorts { get; } = new();
@@ -49,12 +52,18 @@ public partial class CohortsViewModel : ObservableObject
         IStudentService studentService,
         ICsvExportService csvExportService,
         IDialogService dialogService,
+        ISoundService soundService,
+        ISoundConfigService soundConfigService,
+        IDatabaseInitializationTracker dbTracker,
         ILogger<CohortsViewModel> logger)
     {
         _cohortService = cohortService;
         _studentService = studentService;
         _csvExportService = csvExportService;
         _dialogService = dialogService;
+        _soundService = soundService;
+        _soundConfigService = soundConfigService;
+        _dbTracker = dbTracker;
         _logger = logger;
 
         WeakReferenceMessenger.Default.Register<AttendanceRecordedMessage>(this, async (recipient, message) =>
@@ -74,6 +83,7 @@ public partial class CohortsViewModel : ObservableObject
     [RelayCommand]
     public async Task LoadAsync()
     {
+        await _dbTracker.WaitAsync();
         Cohorts.Clear();
         var cohorts = await _cohortService.GetCohortsAsync();
         foreach (var cohort in cohorts)
@@ -124,6 +134,26 @@ public partial class CohortsViewModel : ObservableObject
             _logger.LogError(ex, "[COHORTS] Failed to delete cohort {Id}", cohort.Id);
             StatusMessage = "Failed to delete cohort.";
         }
+    }
+
+    [RelayCommand]
+    private async Task SetCohortClockInSoundAsync(Cohort cohort)
+    {
+        var path = await _soundService.UploadSoundAsync();
+        if (path is null) return;
+
+        await _soundConfigService.SetCohortSoundAsync(cohort.Id, SessionType.ClockIn, path);
+        await LoadAsync();
+    }
+
+    [RelayCommand]
+    private async Task SetCohortClockOutSoundAsync(Cohort cohort)
+    {
+        var path = await _soundService.UploadSoundAsync();
+        if (path is null) return;
+
+        await _soundConfigService.SetCohortSoundAsync(cohort.Id, SessionType.ClockOut, path);
+        await LoadAsync();
     }
 
     [RelayCommand(CanExecute = nameof(CanExportCsv))]
