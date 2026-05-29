@@ -12,6 +12,7 @@ public partial class StudentsViewModel : ObservableObject
     private readonly ICohortService _cohortService;
     private readonly INfcService _nfcService;
     private readonly IDialogService _dialogService;
+    private readonly ISoundService _soundService;
 
     public ObservableCollection<Cohort> Cohorts { get; } = new();
     public ObservableCollection<Student> AllStudentsForCohort { get; } = new();
@@ -46,18 +47,26 @@ public partial class StudentsViewModel : ObservableObject
     [ObservableProperty]
     private bool _isEditingStudent;
 
+    [ObservableProperty]
+    private string? _editStudentClockInSoundPath;
+
+    [ObservableProperty]
+    private string? _editStudentClockOutSoundPath;
+
     partial void OnSelectedCohortChanged(Cohort? value) => _ = LoadAllStudentsForCohortAsync();
 
     public StudentsViewModel(
         IStudentService studentService,
         ICohortService cohortService,
         INfcService nfcService,
-        IDialogService dialogService)
+        IDialogService dialogService,
+        ISoundService soundService)
     {
         _studentService = studentService;
         _cohortService = cohortService;
         _nfcService = nfcService;
         _dialogService = dialogService;
+        _soundService = soundService;
     }
 
     [RelayCommand]
@@ -150,6 +159,8 @@ public partial class StudentsViewModel : ObservableObject
         EditStudentSurname = student.Surname;
         EditStudentUid = student.UID;
         IsEditingStudent = true;
+        EditStudentClockInSoundPath = student.ClockInSoundPath;
+        EditStudentClockOutSoundPath = student.ClockOutSoundPath;
         return Task.CompletedTask;
     }
 
@@ -186,10 +197,14 @@ public partial class StudentsViewModel : ObservableObject
             SelectedStudentForEdit.Name = EditStudentName;
             SelectedStudentForEdit.Surname = EditStudentSurname;
             SelectedStudentForEdit.UID = EditStudentUid;
+            SelectedStudentForEdit.ClockInSoundPath = EditStudentClockInSoundPath;
+            SelectedStudentForEdit.ClockOutSoundPath = EditStudentClockOutSoundPath;
 
             await _studentService.UpdateStudentAsync(SelectedStudentForEdit);
             StatusMessage = $"Student {EditStudentName} {EditStudentSurname} updated.";
             IsEditingStudent = false;
+            EditStudentClockInSoundPath = null;
+            EditStudentClockOutSoundPath = null;
             SelectedStudentForEdit = null;
             await LoadAllStudentsForCohortAsync();
         }
@@ -211,6 +226,26 @@ public partial class StudentsViewModel : ObservableObject
         EditStudentName = string.Empty;
         EditStudentSurname = string.Empty;
         EditStudentUid = string.Empty;
+        EditStudentClockInSoundPath = null;
+        EditStudentClockOutSoundPath = null;
+    }
+
+    [RelayCommand]
+    private async Task SetStudentClockInSoundAsync()
+    {
+        var path = await _soundService.UploadSoundAsync();
+        if (path is null) return;
+
+        EditStudentClockInSoundPath = path;
+    }
+
+    [RelayCommand]
+    private async Task SetStudentClockOutSoundAsync()
+    {
+        var path = await _soundService.UploadSoundAsync();
+        if (path is null) return;
+
+        EditStudentClockOutSoundPath = path;
     }
 
     private async Task LoadAllStudentsForCohortAsync()
