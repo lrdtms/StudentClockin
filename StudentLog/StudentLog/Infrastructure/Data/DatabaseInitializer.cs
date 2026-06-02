@@ -1,5 +1,5 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
-using MySqlConnector;
 using StudentLog.Core.Interfaces;
 
 namespace StudentLog.Infrastructure.Data;
@@ -18,53 +18,48 @@ public class DatabaseInitializer
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         var dbConnection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
-        await using var connection = (MySqlConnection)dbConnection;
+        await using var connection = (SqliteConnection)dbConnection;
 
         const string createCohortTable = """
             CREATE TABLE IF NOT EXISTS cohort (
-                Id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                Name VARCHAR(100) NOT NULL
+                Id   INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name TEXT NOT NULL
             );
             """;
 
         const string createStudentTable = """
             CREATE TABLE IF NOT EXISTS student (
-                Id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                UID VARCHAR(100) NOT NULL UNIQUE,
-                cohortId INT NOT NULL,
-                SignInTime DATETIME NULL,
-                SignOutTime DATETIME NULL,
-                name VARCHAR(100) NOT NULL,
-                surname VARCHAR(100) NOT NULL,
-                CONSTRAINT FK_student_cohort FOREIGN KEY (cohortId) REFERENCES cohort(Id)
+                Id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                UID         TEXT NOT NULL UNIQUE,
+                cohortId    INTEGER NOT NULL,
+                SignInTime  TEXT NULL,
+                SignOutTime TEXT NULL,
+                name        TEXT NOT NULL,
+                surname     TEXT NOT NULL,
+                FOREIGN KEY (cohortId) REFERENCES cohort(Id)
             );
             """;
-
-        await using var cohortCommand = new MySqlCommand(createCohortTable, connection);
-        await cohortCommand.ExecuteNonQueryAsync(cancellationToken);
-
-        await using var studentCommand = new MySqlCommand(createStudentTable, connection);
-        await studentCommand.ExecuteNonQueryAsync(cancellationToken);
 
         const string createAttendanceTable = """
             CREATE TABLE IF NOT EXISTS attendance (
-                Id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                StudentId INT NOT NULL,
-                SessionDate DATE NOT NULL,
-                SignInTime DATETIME NULL,
-                SignOutTime DATETIME NULL,
-                CONSTRAINT FK_attendance_student FOREIGN KEY (StudentId) REFERENCES student(Id) ON DELETE CASCADE,
-                CONSTRAINT UQ_attendance_student_date UNIQUE (StudentId, SessionDate)
+                Id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                StudentId   INTEGER NOT NULL,
+                SessionDate TEXT NOT NULL,
+                SignInTime  TEXT NULL,
+                SignOutTime TEXT NULL,
+                FOREIGN KEY (StudentId) REFERENCES student(Id) ON DELETE CASCADE,
+                UNIQUE (StudentId, SessionDate)
             );
             """;
 
-        await using var attendanceCommand = new MySqlCommand(createAttendanceTable, connection);
-        await attendanceCommand.ExecuteNonQueryAsync(cancellationToken);
+        await ExecuteAsync(connection, createCohortTable, cancellationToken);
+        await ExecuteAsync(connection, createStudentTable, cancellationToken);
+        await ExecuteAsync(connection, createAttendanceTable, cancellationToken);
 
-        await AddColumnIfMissingAsync(connection, "cohort",  "ClockInSoundPath",  "VARCHAR(500) NULL", cancellationToken);
-        await AddColumnIfMissingAsync(connection, "cohort",  "ClockOutSoundPath", "VARCHAR(500) NULL", cancellationToken);
-        await AddColumnIfMissingAsync(connection, "student", "ClockInSoundPath",  "VARCHAR(500) NULL", cancellationToken);
-        await AddColumnIfMissingAsync(connection, "student", "ClockOutSoundPath", "VARCHAR(500) NULL", cancellationToken);
+        await AddColumnIfMissingAsync(connection, "cohort",  "ClockInSoundPath",  "TEXT NULL", cancellationToken);
+        await AddColumnIfMissingAsync(connection, "cohort",  "ClockOutSoundPath", "TEXT NULL", cancellationToken);
+        await AddColumnIfMissingAsync(connection, "student", "ClockInSoundPath",  "TEXT NULL", cancellationToken);
+        await AddColumnIfMissingAsync(connection, "student", "ClockOutSoundPath", "TEXT NULL", cancellationToken);
 
         _logger.LogInformation("[DB] Schema initialisation complete");
 
@@ -73,75 +68,59 @@ public class DatabaseInitializer
 #endif
     }
 
-    private async Task SeedTestDataAsync(MySqlConnection connection, CancellationToken cancellationToken)
+    private async Task SeedTestDataAsync(SqliteConnection connection, CancellationToken cancellationToken)
     {
-        const string checkCohortsQuery = "SELECT COUNT(*) FROM cohort;";
-        await using var checkCohortsCommand = new MySqlCommand(checkCohortsQuery, connection);
-        var cohortCount = Convert.ToInt32(await checkCohortsCommand.ExecuteScalarAsync(cancellationToken));
+        await using var checkCohortsCmd = new SqliteCommand("SELECT COUNT(*) FROM cohort;", connection);
+        var cohortCount = Convert.ToInt32(await checkCohortsCmd.ExecuteScalarAsync(cancellationToken));
 
-        bool cohortsJustSeeded = false;
-        if (cohortCount == 0)
-        {
-            _logger.LogInformation("[DB] Seeding test cohorts...");
+        if (cohortCount != 0) return;
 
-            const string insertCohortsQuery = """
-                INSERT INTO cohort (Name) VALUES
-                ('cohort 2026'),
-                ('cohort 1');
-                """;
+        _logger.LogInformation("[DB] Seeding test cohorts...");
+        const string insertCohorts = """
+            INSERT INTO cohort (Name) VALUES ('cohort 2026'), ('cohort 1');
+            """;
+        await ExecuteAsync(connection, insertCohorts, cancellationToken);
 
-            await using var insertCohortsCommand = new MySqlCommand(insertCohortsQuery, connection);
-            await insertCohortsCommand.ExecuteNonQueryAsync(cancellationToken);
-            cohortsJustSeeded = true;
-        }
+        await using var checkStudentsCmd = new SqliteCommand("SELECT COUNT(*) FROM student;", connection);
+        var studentCount = Convert.ToInt32(await checkStudentsCmd.ExecuteScalarAsync(cancellationToken));
 
-        if (!cohortsJustSeeded) return;
+        if (studentCount != 0) return;
 
-        const string checkStudentsQuery = "SELECT COUNT(*) FROM student;";
-        await using var checkStudentsCommand = new MySqlCommand(checkStudentsQuery, connection);
-        var studentCount = Convert.ToInt32(await checkStudentsCommand.ExecuteScalarAsync(cancellationToken));
-
-        if (studentCount == 0)
-        {
-            _logger.LogInformation("[DB] Seeding test students...");
-
-            const string insertStudentsQuery = """
-                INSERT INTO student (UID, cohortId, name, surname, SignInTime, SignOutTime) VALUES
-                ('04B9B24A901681', 2, 'John', 'Doe', NULL, NULL),
-                ('04F1A24A931ABC', 2, 'Jane', 'Smith', NULL, NULL),
-                ('04C2D34B012DEF', 2, 'Bob', 'Johnson', NULL, NULL);
-                """;
-
-            await using var insertStudentsCommand = new MySqlCommand(insertStudentsQuery, connection);
-            await insertStudentsCommand.ExecuteNonQueryAsync(cancellationToken);
-
-            _logger.LogInformation("[DB] Test data seeded successfully");
-        }
+        _logger.LogInformation("[DB] Seeding test students...");
+        const string insertStudents = """
+            INSERT INTO student (UID, cohortId, name, surname, SignInTime, SignOutTime) VALUES
+            ('04B9B24A901681', 2, 'John',  'Doe',     NULL, NULL),
+            ('04F1A24A931ABC', 2, 'Jane',  'Smith',   NULL, NULL),
+            ('04C2D34B012DEF', 2, 'Bob',   'Johnson', NULL, NULL);
+            """;
+        await ExecuteAsync(connection, insertStudents, cancellationToken);
+        _logger.LogInformation("[DB] Test data seeded successfully");
     }
 
     private static async Task AddColumnIfMissingAsync(
-        MySqlConnection connection,
+        SqliteConnection connection,
         string table,
         string column,
         string definition,
         CancellationToken cancellationToken)
     {
-        const string checkSql = """
-            SELECT COUNT(*) FROM information_schema.COLUMNS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME   = @table
-              AND COLUMN_NAME  = @column;
-            """;
+        await using var pragmaCmd = new SqliteCommand($"PRAGMA table_info(\"{table}\");", connection);
+        await using var reader = await pragmaCmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (reader.GetString(reader.GetOrdinal("name"))
+                    .Equals(column, StringComparison.OrdinalIgnoreCase))
+                return;
+        }
 
-        await using var checkCmd = new MySqlCommand(checkSql, connection);
-        checkCmd.Parameters.AddWithValue("@table", table);
-        checkCmd.Parameters.AddWithValue("@column", column);
-        var exists = Convert.ToInt32(await checkCmd.ExecuteScalarAsync(cancellationToken)) > 0;
-
-        if (exists) return;
-
-        await using var alterCmd = new MySqlCommand(
-            $"ALTER TABLE `{table}` ADD COLUMN `{column}` {definition};", connection);
+        await using var alterCmd = new SqliteCommand(
+            $"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {definition};", connection);
         await alterCmd.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task ExecuteAsync(SqliteConnection connection, string sql, CancellationToken ct)
+    {
+        await using var cmd = new SqliteCommand(sql, connection);
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 }

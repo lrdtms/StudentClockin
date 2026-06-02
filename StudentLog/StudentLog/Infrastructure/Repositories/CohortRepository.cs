@@ -1,4 +1,4 @@
-using MySqlConnector;
+using Microsoft.Data.Sqlite;
 using StudentLog.Core.Interfaces;
 using StudentLog.Core.Interfaces.Repositories;
 using StudentLog.Core.Models;
@@ -14,8 +14,8 @@ public class CohortRepository : ICohortRepository
         _connectionFactory = connectionFactory;
     }
 
-    private async Task<MySqlConnection> OpenAsync(CancellationToken cancellationToken)
-        => (MySqlConnection)await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+    private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
+        => (SqliteConnection)await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
 
     public async Task<IReadOnlyList<Cohort>> GetAllAsync(CancellationToken cancellationToken = default)
     {
@@ -23,13 +23,11 @@ public class CohortRepository : ICohortRepository
         await using var connection = await OpenAsync(cancellationToken);
 
         const string sql = "SELECT Id, Name, ClockInSoundPath, ClockOutSoundPath FROM cohort ORDER BY Name;";
-        await using var command = new MySqlCommand(sql, connection);
+        await using var command = new SqliteCommand(sql, connection);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
         while (await reader.ReadAsync(cancellationToken))
-        {
             result.Add(MapCohort(reader));
-        }
 
         return result;
     }
@@ -37,9 +35,9 @@ public class CohortRepository : ICohortRepository
     public async Task<int> AddAsync(Cohort cohort, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
-        const string sql = "INSERT INTO cohort (Name) VALUES (@name); SELECT LAST_INSERT_ID();";
+        const string sql = "INSERT INTO cohort (Name) VALUES (@name); SELECT last_insert_rowid();";
 
-        await using var command = new MySqlCommand(sql, connection);
+        await using var command = new SqliteCommand(sql, connection);
         command.Parameters.AddWithValue("@name", cohort.Name);
 
         var id = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
@@ -52,7 +50,7 @@ public class CohortRepository : ICohortRepository
         await using var connection = await OpenAsync(cancellationToken);
         const string sql = "SELECT Id, Name, ClockInSoundPath, ClockOutSoundPath FROM cohort WHERE Id = @id LIMIT 1;";
 
-        await using var command = new MySqlCommand(sql, connection);
+        await using var command = new SqliteCommand(sql, connection);
         command.Parameters.AddWithValue("@id", id);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
@@ -65,14 +63,14 @@ public class CohortRepository : ICohortRepository
     public async Task DeleteAsync(int id, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
 
-        await using var deleteStudentsCmd = new MySqlCommand(
+        await using var deleteStudentsCmd = new SqliteCommand(
             "DELETE FROM student WHERE cohortId = @id;", connection, transaction);
         deleteStudentsCmd.Parameters.AddWithValue("@id", id);
         await deleteStudentsCmd.ExecuteNonQueryAsync(cancellationToken);
 
-        await using var deleteCohortCmd = new MySqlCommand(
+        await using var deleteCohortCmd = new SqliteCommand(
             "DELETE FROM cohort WHERE Id = @id;", connection, transaction);
         deleteCohortCmd.Parameters.AddWithValue("@id", id);
         await deleteCohortCmd.ExecuteNonQueryAsync(cancellationToken);
@@ -91,7 +89,7 @@ public class CohortRepository : ICohortRepository
             WHERE Id = @id;
             """;
 
-        await using var command = new MySqlCommand(sql, connection);
+        await using var command = new SqliteCommand(sql, connection);
         command.Parameters.AddWithValue("@name", cohort.Name);
         command.Parameters.AddWithValue("@clockIn", (object?)cohort.ClockInSoundPath ?? DBNull.Value);
         command.Parameters.AddWithValue("@clockOut", (object?)cohort.ClockOutSoundPath ?? DBNull.Value);
@@ -100,11 +98,19 @@ public class CohortRepository : ICohortRepository
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static Cohort MapCohort(MySqlDataReader reader) => new()
+    private static Cohort MapCohort(SqliteDataReader reader)
     {
-        Id = reader.GetInt32("Id"),
-        Name = reader.GetString("Name"),
-        ClockInSoundPath  = reader.IsDBNull(reader.GetOrdinal("ClockInSoundPath"))  ? null : reader.GetString("ClockInSoundPath"),
-        ClockOutSoundPath = reader.IsDBNull(reader.GetOrdinal("ClockOutSoundPath")) ? null : reader.GetString("ClockOutSoundPath"),
-    };
+        int idxId       = reader.GetOrdinal("Id");
+        int idxName     = reader.GetOrdinal("Name");
+        int idxClockIn  = reader.GetOrdinal("ClockInSoundPath");
+        int idxClockOut = reader.GetOrdinal("ClockOutSoundPath");
+
+        return new Cohort
+        {
+            Id                = reader.GetInt32(idxId),
+            Name              = reader.GetString(idxName),
+            ClockInSoundPath  = reader.IsDBNull(idxClockIn)  ? null : reader.GetString(idxClockIn),
+            ClockOutSoundPath = reader.IsDBNull(idxClockOut) ? null : reader.GetString(idxClockOut),
+        };
+    }
 }

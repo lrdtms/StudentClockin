@@ -1,5 +1,5 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
-using MySqlConnector;
 using StudentLog.Application.Interfaces;
 using StudentLog.Core.Interfaces;
 using StudentLog.Core.Interfaces.Repositories;
@@ -54,7 +54,7 @@ public class AttendanceService : IAttendanceService
 
             // Open one connection and wrap both writes in a transaction
             var dbConnection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
-            await using var connection = (MySqlConnection)dbConnection;
+            await using var connection = (SqliteConnection)dbConnection;
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
             try

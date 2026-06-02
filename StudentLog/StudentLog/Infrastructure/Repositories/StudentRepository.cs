@@ -1,6 +1,6 @@
 using System.Data;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
-using MySqlConnector;
 using StudentLog.Core.Interfaces;
 using StudentLog.Core.Interfaces.Repositories;
 using StudentLog.Core.Models;
@@ -18,8 +18,8 @@ public class StudentRepository : IStudentRepository
         _logger = logger;
     }
 
-    private async Task<MySqlConnection> OpenAsync(CancellationToken cancellationToken)
-        => (MySqlConnection)await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+    private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
+        => (SqliteConnection)await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
 
     public async Task<IReadOnlyList<Student>> GetAllAsync(int? cohortId = null, CancellationToken cancellationToken = default)
     {
@@ -31,7 +31,7 @@ public class StudentRepository : IStudentRepository
             sql += " WHERE cohortId = @cohortId";
         sql += " ORDER BY surname, name;";
 
-        await using var command = new MySqlCommand(sql, connection);
+        await using var command = new SqliteCommand(sql, connection);
         if (cohortId.HasValue)
             command.Parameters.AddWithValue("@cohortId", cohortId.Value);
 
@@ -53,7 +53,7 @@ public class StudentRepository : IStudentRepository
             FROM student WHERE Id = @id LIMIT 1;
             """;
 
-        await using var command = new MySqlCommand(sql, connection);
+        await using var command = new SqliteCommand(sql, connection);
         command.Parameters.AddWithValue("@id", studentId);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -71,7 +71,7 @@ public class StudentRepository : IStudentRepository
             FROM student WHERE UID = @uid LIMIT 1;
             """;
 
-        await using var command = new MySqlCommand(sql, connection);
+        await using var command = new SqliteCommand(sql, connection);
         command.Parameters.AddWithValue("@uid", uid);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -87,14 +87,14 @@ public class StudentRepository : IStudentRepository
         const string sql = """
             INSERT INTO student (UID, cohortId, SignInTime, SignOutTime, name, surname, ClockInSoundPath, ClockOutSoundPath)
             VALUES (@uid, @cohortId, @signInTime, @signOutTime, @name, @surname, @clockIn, @clockOut);
-            SELECT LAST_INSERT_ID();
+            SELECT last_insert_rowid();
             """;
 
-        await using var command = new MySqlCommand(sql, connection);
+        await using var command = new SqliteCommand(sql, connection);
         command.Parameters.AddWithValue("@uid", student.UID);
         command.Parameters.AddWithValue("@cohortId", student.CohortId);
-        command.Parameters.AddWithValue("@signInTime", student.SignInTime);
-        command.Parameters.AddWithValue("@signOutTime", student.SignOutTime);
+        command.Parameters.AddWithValue("@signInTime", (object?)student.SignInTime ?? DBNull.Value);
+        command.Parameters.AddWithValue("@signOutTime", (object?)student.SignOutTime ?? DBNull.Value);
         command.Parameters.AddWithValue("@name", student.Name);
         command.Parameters.AddWithValue("@surname", student.Surname);
         command.Parameters.AddWithValue("@clockIn", (object?)student.ClockInSoundPath ?? DBNull.Value);
@@ -121,9 +121,9 @@ public class StudentRepository : IStudentRepository
 
             if (transaction is not null)
             {
-                var txConnection = (MySqlConnection)transaction.Connection!;
-                var txCast = (MySqlTransaction)transaction;
-                await using var txCommand = new MySqlCommand(sql, txConnection, txCast);
+                var txConnection = (SqliteConnection)transaction.Connection!;
+                var txCast = (SqliteTransaction)transaction;
+                await using var txCommand = new SqliteCommand(sql, txConnection, txCast);
                 txCommand.Parameters.AddWithValue("@signInTime", (object?)signInTime ?? DBNull.Value);
                 txCommand.Parameters.AddWithValue("@signOutTime", (object?)signOutTime ?? DBNull.Value);
                 txCommand.Parameters.AddWithValue("@id", studentId);
@@ -133,7 +133,7 @@ public class StudentRepository : IStudentRepository
             }
 
             await using var connection = await OpenAsync(cancellationToken);
-            await using var command = new MySqlCommand(sql, connection);
+            await using var command = new SqliteCommand(sql, connection);
             command.Parameters.AddWithValue("@signInTime", (object?)signInTime ?? DBNull.Value);
             command.Parameters.AddWithValue("@signOutTime", (object?)signOutTime ?? DBNull.Value);
             command.Parameters.AddWithValue("@id", studentId);
@@ -161,19 +161,19 @@ public class StudentRepository : IStudentRepository
             ? """
               INSERT INTO attendance (StudentId, SessionDate, SignInTime, SignOutTime)
               VALUES (@studentId, @sessionDate, @timestamp, NULL)
-              ON DUPLICATE KEY UPDATE SignInTime = @timestamp, SignOutTime = NULL
+              ON CONFLICT(StudentId, SessionDate) DO UPDATE SET SignInTime = @timestamp, SignOutTime = NULL
               """
             : """
               INSERT INTO attendance (StudentId, SessionDate, SignInTime, SignOutTime)
               VALUES (@studentId, @sessionDate, NULL, @timestamp)
-              ON DUPLICATE KEY UPDATE SignOutTime = @timestamp
+              ON CONFLICT(StudentId, SessionDate) DO UPDATE SET SignOutTime = @timestamp
               """;
 
         if (transaction is not null)
         {
-            var txConnection = (MySqlConnection)transaction.Connection!;
-            var txCast = (MySqlTransaction)transaction;
-            await using var txCommand = new MySqlCommand(sql, txConnection, txCast);
+            var txConnection = (SqliteConnection)transaction.Connection!;
+            var txCast = (SqliteTransaction)transaction;
+            await using var txCommand = new SqliteCommand(sql, txConnection, txCast);
             txCommand.Parameters.AddWithValue("@studentId", studentId);
             txCommand.Parameters.AddWithValue("@sessionDate", sessionDate.ToDateTime(TimeOnly.MinValue));
             txCommand.Parameters.AddWithValue("@timestamp", timestamp);
@@ -181,7 +181,7 @@ public class StudentRepository : IStudentRepository
         }
 
         await using var connection = await OpenAsync(cancellationToken);
-        await using var command = new MySqlCommand(sql, connection);
+        await using var command = new SqliteCommand(sql, connection);
         command.Parameters.AddWithValue("@studentId", studentId);
         command.Parameters.AddWithValue("@sessionDate", sessionDate.ToDateTime(TimeOnly.MinValue));
         command.Parameters.AddWithValue("@timestamp", timestamp);
@@ -194,7 +194,7 @@ public class StudentRepository : IStudentRepository
         await using var connection = await OpenAsync(cancellationToken);
         const string sql = "DELETE FROM student WHERE Id = @id;";
 
-        await using var command = new MySqlCommand(sql, connection);
+        await using var command = new SqliteCommand(sql, connection);
         command.Parameters.AddWithValue("@id", studentId);
 
         return await command.ExecuteNonQueryAsync(cancellationToken);
@@ -210,7 +210,7 @@ public class StudentRepository : IStudentRepository
             WHERE Id = @id;
             """;
 
-        await using var command = new MySqlCommand(sql, connection);
+        await using var command = new SqliteCommand(sql, connection);
         command.Parameters.AddWithValue("@uid", student.UID);
         command.Parameters.AddWithValue("@name", student.Name);
         command.Parameters.AddWithValue("@surname", student.Surname);
@@ -237,7 +237,7 @@ public class StudentRepository : IStudentRepository
             ORDER BY s.surname, s.name;
             """;
 
-        await using var command = new MySqlCommand(sql, connection);
+        await using var command = new SqliteCommand(sql, connection);
         command.Parameters.AddWithValue("@cohortId", cohortId);
         command.Parameters.AddWithValue("@sessionDate", sessionDate.ToDateTime(TimeOnly.MinValue));
 
@@ -264,7 +264,7 @@ public class StudentRepository : IStudentRepository
             ORDER BY s.surname, s.name;
             """;
 
-        await using var command = new MySqlCommand(sql, connection);
+        await using var command = new SqliteCommand(sql, connection);
         command.Parameters.AddWithValue("@cohortId", cohortId);
         command.Parameters.AddWithValue("@from", from.ToDateTime(TimeOnly.MinValue));
         command.Parameters.AddWithValue("@to", to.ToDateTime(TimeOnly.MinValue));
@@ -289,35 +289,51 @@ public class StudentRepository : IStudentRepository
             ORDER BY a.SessionDate DESC;
             """;
 
-        await using var command = new MySqlCommand(sql, connection);
+        await using var command = new SqliteCommand(sql, connection);
         command.Parameters.AddWithValue("@studentId", studentId);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
+            int idxSignIn  = reader.GetOrdinal("SignInTime");
+            int idxSignOut = reader.GetOrdinal("SignOutTime");
+
             result.Add(new AttendanceRecord
             {
-                StudentId = reader.GetInt32("StudentId"),
-                StudentName = reader.GetString("name"),
-                StudentSurname = reader.GetString("surname"),
-                SignInTime = reader.IsDBNull(reader.GetOrdinal("SignInTime")) ? null : reader.GetDateTime("SignInTime"),
-                SignOutTime = reader.IsDBNull(reader.GetOrdinal("SignOutTime")) ? null : reader.GetDateTime("SignOutTime")
+                StudentId      = reader.GetInt32(reader.GetOrdinal("StudentId")),
+                StudentName    = reader.GetString(reader.GetOrdinal("name")),
+                StudentSurname = reader.GetString(reader.GetOrdinal("surname")),
+                SignInTime     = reader.IsDBNull(idxSignIn)  ? null : reader.GetDateTime(idxSignIn),
+                SignOutTime    = reader.IsDBNull(idxSignOut) ? null : reader.GetDateTime(idxSignOut),
             });
         }
 
         return result;
     }
 
-    private static Student MapStudent(MySqlDataReader reader) => new()
+    private static Student MapStudent(SqliteDataReader reader)
     {
-        Id = reader.GetInt32("Id"),
-        UID = reader.GetString("UID"),
-        CohortId = reader.GetInt32("cohortId"),
-        SignInTime = reader.IsDBNull(reader.GetOrdinal("SignInTime")) ? null : reader.GetDateTime("SignInTime"),
-        SignOutTime = reader.IsDBNull(reader.GetOrdinal("SignOutTime")) ? null : reader.GetDateTime("SignOutTime"),
-        Name = reader.GetString("name"),
-        Surname = reader.GetString("surname"),
-        ClockInSoundPath  = reader.IsDBNull(reader.GetOrdinal("ClockInSoundPath"))  ? null : reader.GetString("ClockInSoundPath"),
-        ClockOutSoundPath = reader.IsDBNull(reader.GetOrdinal("ClockOutSoundPath")) ? null : reader.GetString("ClockOutSoundPath"),
-    };
+        int idxId       = reader.GetOrdinal("Id");
+        int idxUid      = reader.GetOrdinal("UID");
+        int idxCohort   = reader.GetOrdinal("cohortId");
+        int idxSignIn   = reader.GetOrdinal("SignInTime");
+        int idxSignOut  = reader.GetOrdinal("SignOutTime");
+        int idxName     = reader.GetOrdinal("name");
+        int idxSurname  = reader.GetOrdinal("surname");
+        int idxClockIn  = reader.GetOrdinal("ClockInSoundPath");
+        int idxClockOut = reader.GetOrdinal("ClockOutSoundPath");
+
+        return new Student
+        {
+            Id                = reader.GetInt32(idxId),
+            UID               = reader.GetString(idxUid),
+            CohortId          = reader.GetInt32(idxCohort),
+            SignInTime        = reader.IsDBNull(idxSignIn)   ? null : reader.GetDateTime(idxSignIn),
+            SignOutTime       = reader.IsDBNull(idxSignOut)  ? null : reader.GetDateTime(idxSignOut),
+            Name              = reader.GetString(idxName),
+            Surname           = reader.GetString(idxSurname),
+            ClockInSoundPath  = reader.IsDBNull(idxClockIn)  ? null : reader.GetString(idxClockIn),
+            ClockOutSoundPath = reader.IsDBNull(idxClockOut) ? null : reader.GetString(idxClockOut),
+        };
+    }
 }

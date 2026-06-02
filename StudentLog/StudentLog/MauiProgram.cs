@@ -35,9 +35,8 @@ namespace StudentLog
                 .Build();
 
             builder.Configuration.AddConfiguration(configuration);
-            builder.Services.Configure<MySqlOptions>(builder.Configuration.GetSection("MySql"));
 
-            builder.Services.AddSingleton<IDbConnectionFactory, MySqlConnectionFactory>();
+            builder.Services.AddSingleton<IDbConnectionFactory, SqliteConnectionFactory>();
             builder.Services.AddSingleton<DatabaseInitializer>();
 
             builder.Services.AddSingleton<ICohortRepository, CohortRepository>();
