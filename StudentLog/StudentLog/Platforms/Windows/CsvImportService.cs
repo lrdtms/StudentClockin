@@ -33,22 +33,36 @@ public class CsvImportService : ICsvImportService
         {
             HeaderValidated = null,
             MissingFieldFound = null,
-            PrepareHeaderForMatch = args => args.Header.Trim().ToLowerInvariant(),
         };
 
         using var csv = new CsvReader(reader, config);
-        csv.Context.RegisterClassMap(new StudentImportRowMap());
+
+        await csv.ReadAsync();
+        csv.ReadHeader();
+
+        var headers = csv.HeaderRecord!
+            .Select((h, i) => (Header: h.Trim().ToLowerInvariant(), Index: i))
+            .ToDictionary(x => x.Header, x => x.Index);
+
+        if (!headers.TryGetValue("name", out int nameIdx) ||
+            !headers.TryGetValue("surname", out int surnameIdx) ||
+            !headers.TryGetValue("uid", out int uidIdx))
+            return new CsvImportResult([], 0);
 
         var validRows = new List<StudentImportRow>();
         int invalidCount = 0;
 
-        await foreach (var row in csv.GetRecordsAsync<StudentImportRow>())
+        while (await csv.ReadAsync())
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (string.IsNullOrWhiteSpace(row.Name) ||
-                string.IsNullOrWhiteSpace(row.Surname) ||
-                string.IsNullOrWhiteSpace(row.UID))
+            var name    = csv.GetField(nameIdx)    ?? string.Empty;
+            var surname = csv.GetField(surnameIdx) ?? string.Empty;
+            var uid     = csv.GetField(uidIdx)     ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(name) ||
+                string.IsNullOrWhiteSpace(surname) ||
+                string.IsNullOrWhiteSpace(uid))
             {
                 invalidCount++;
                 continue;
@@ -56,9 +70,9 @@ public class CsvImportService : ICsvImportService
 
             validRows.Add(new StudentImportRow
             {
-                Name = row.Name.Trim(),
-                Surname = row.Surname.Trim(),
-                UID = row.UID.Trim().ToUpperInvariant()
+                Name    = name.Trim(),
+                Surname = surname.Trim(),
+                UID     = uid.Trim().ToUpperInvariant()
             });
         }
 
