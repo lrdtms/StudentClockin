@@ -29,7 +29,10 @@
                             <Entry Grid.Column="0" Placeholder="NFC UID" Text="{Binding Uid}" />
                             <Button Grid.Column="1" Text="SCAN" Command="{Binding ScanUidCommand}" Style="{StaticResource SecondaryButton}" />
                         </Grid>
-                        <Button Text="ADD STUDENT" Command="{Binding AddStudentCommand}" HorizontalOptions="Start"/>
+                        <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="8" HorizontalOptions="Start">
+                            <Button Grid.Column="0" Text="ADD STUDENT" Command="{Binding AddStudentCommand}" />
+                            <Button Grid.Column="1" Text="IMPORT CSV" Command="{Binding ImportCsvCommand}" Style="{StaticResource SecondaryButton}" />
+                        </Grid>
                         <Label Text="{Binding StatusMessage}" Style="{StaticResource MutedLabel}" />
                     </VerticalStackLayout>
                 </Border>
