@@ -37,7 +37,7 @@ public class CsvImportService : ICsvImportService
         };
 
         using var csv = new CsvReader(reader, config);
-        csv.Context.RegisterClassMap<StudentImportRowMap>();
+        csv.Context.RegisterClassMap(new StudentImportRowMap());
 
         var validRows = new List<StudentImportRow>();
         int invalidCount = 0;
