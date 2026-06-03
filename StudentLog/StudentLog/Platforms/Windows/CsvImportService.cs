@@ -73,13 +73,15 @@ public class CsvImportService : ICsvImportService
             .Select((h, i) => (Header: h.Trim().ToLowerInvariant(), Index: i))
             .ToDictionary(x => x.Header, x => x.Index);
 
-        if (!headers.TryGetValue("name", out int nameIdx) ||
-            !headers.TryGetValue("surname", out int surnameIdx) ||
-            !headers.TryGetValue("uid", out int uidIdx))
+        var nameIdx    = TryGetIndex(headers, "name", "first name", "firstname");
+        var surnameIdx = TryGetIndex(headers, "surname", "last name", "lastname", "family name");
+        var uidIdx     = TryGetIndex(headers, "uid");
+
+        if (nameIdx < 0 || surnameIdx < 0 || uidIdx < 0)
         {
             var found = string.Join(", ", csv.HeaderRecord!.Select(h => $"'{h}'"));
             throw new InvalidOperationException(
-                $"CSV must have Name, Surname and UID columns (found: {found})");
+                $"CSV must have Name/First Name, Surname/Last Name and UID columns (found: {found})");
         }
 
         var validRows = new List<StudentImportRow>();
@@ -110,5 +112,13 @@ public class CsvImportService : ICsvImportService
         }
 
         return new CsvImportResult(validRows, invalidCount);
+    }
+
+    private static int TryGetIndex(Dictionary<string, int> headers, params string[] candidates)
+    {
+        foreach (var name in candidates)
+            if (headers.TryGetValue(name, out int idx))
+                return idx;
+        return -1;
     }
 }
