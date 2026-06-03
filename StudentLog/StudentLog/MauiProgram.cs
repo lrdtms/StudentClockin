@@ -54,6 +54,7 @@ namespace StudentLog
 
 #if WINDOWS
             builder.Services.AddTransient<ICsvExportService, CsvExportService>();
+            builder.Services.AddTransient<ICsvImportService, CsvImportService>();
 #endif
 
             builder.Services.AddSingleton<AppShell>();
