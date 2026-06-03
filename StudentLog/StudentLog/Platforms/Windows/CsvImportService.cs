@@ -29,13 +29,22 @@ public class CsvImportService : ICsvImportService
         await using var stream = await file.OpenStreamForReadAsync();
         using var reader = new StreamReader(stream);
 
+        var content = await reader.ReadToEndAsync(cancellationToken);
+
+        // Excel saves CSVs with semicolons in many locales — detect from first line
+        var firstNewline = content.IndexOf('\n');
+        var firstLine = firstNewline >= 0 ? content[..firstNewline] : content;
+        var delimiter = firstLine.Contains(';') ? ";" : ",";
+
         var config = new CsvConfiguration(CultureInfo.InvariantCulture)
         {
+            Delimiter = delimiter,
             HeaderValidated = null,
             MissingFieldFound = null,
         };
 
-        using var csv = new CsvReader(reader, config);
+        using var stringReader = new StringReader(content);
+        using var csv = new CsvReader(stringReader, config);
 
         await csv.ReadAsync();
         csv.ReadHeader();
