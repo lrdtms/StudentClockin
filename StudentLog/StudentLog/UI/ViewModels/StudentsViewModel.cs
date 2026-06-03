@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using StudentLog.Application.Csv;
 using StudentLog.Application.Interfaces;
 using StudentLog.Core.Models;
 using System.Collections.ObjectModel;
@@ -14,6 +15,7 @@ public partial class StudentsViewModel : ObservableObject
     private readonly IDialogService _dialogService;
     private readonly ISoundService _soundService;
     private readonly IDatabaseInitializationTracker _dbTracker;
+    private readonly ICsvImportService _csvImportService;
 
     public ObservableCollection<Cohort> Cohorts { get; } = new();
     public ObservableCollection<Student> AllStudentsForCohort { get; } = new();
@@ -62,7 +64,8 @@ public partial class StudentsViewModel : ObservableObject
         INfcService nfcService,
         IDialogService dialogService,
         ISoundService soundService,
-        IDatabaseInitializationTracker dbTracker)
+        IDatabaseInitializationTracker dbTracker,
+        ICsvImportService csvImportService)
     {
         _studentService = studentService;
         _cohortService = cohortService;
@@ -70,6 +73,7 @@ public partial class StudentsViewModel : ObservableObject
         _dialogService = dialogService;
         _soundService = soundService;
         _dbTracker = dbTracker;
+        _csvImportService = csvImportService;
     }
 
     [RelayCommand]
@@ -126,6 +130,65 @@ public partial class StudentsViewModel : ObservableObject
         {
             StatusMessage = ex.Message;
         }
+    }
+
+    [RelayCommand]
+    private async Task ImportCsvAsync()
+    {
+        if (SelectedCohort is null)
+        {
+            StatusMessage = "Please select a cohort first.";
+            return;
+        }
+
+        CsvImportResult? result;
+        try
+        {
+            result = await _csvImportService.PickAndParseAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Import failed: {ex.Message}";
+            return;
+        }
+
+        if (result is null)
+            return;
+
+        var existing = await _studentService.GetStudentsAsync(SelectedCohort.Id);
+        var existingUids = new HashSet<string>(existing.Select(s => s.UID), StringComparer.OrdinalIgnoreCase);
+
+        int imported = 0;
+        int skipped = 0;
+        int invalid = result.InvalidRowCount;
+
+        foreach (var row in result.ValidRows)
+        {
+            if (existingUids.Contains(row.UID))
+            {
+                skipped++;
+                continue;
+            }
+
+            try
+            {
+                await _studentService.AddStudentAsync(row.Name, row.Surname, row.UID, SelectedCohort.Id);
+                existingUids.Add(row.UID);
+                imported++;
+            }
+            catch (ArgumentException)
+            {
+                invalid++;
+            }
+        }
+
+        await LoadAllStudentsForCohortAsync();
+
+        var parts = new List<string>();
+        if (imported > 0) parts.Add($"Imported {imported} student{(imported == 1 ? "" : "s")}");
+        if (skipped > 0) parts.Add($"{skipped} duplicate{(skipped == 1 ? "" : "s")} skipped");
+        if (invalid > 0) parts.Add($"{invalid} invalid row{(invalid == 1 ? "" : "s")}");
+        StatusMessage = parts.Count > 0 ? string.Join(". ", parts) + "." : "Nothing to import.";
     }
 
     [RelayCommand]
