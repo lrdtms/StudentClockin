@@ -31,10 +31,19 @@ public class CsvImportService : ICsvImportService
 
         var content = await reader.ReadToEndAsync(cancellationToken);
 
-        // Excel saves CSVs with semicolons in many locales — detect from first line
+        // Strip UTF-8 BOM if StreamReader didn't already remove it
+        if (content.Length > 0 && content[0] == '﻿')
+            content = content[1..];
+
+        // Detect delimiter: pick whichever of , ; \t appears most in the first line
         var firstNewline = content.IndexOf('\n');
         var firstLine = firstNewline >= 0 ? content[..firstNewline] : content;
-        var delimiter = firstLine.Contains(';') ? ";" : ",";
+        var commas     = firstLine.Count(c => c == ',');
+        var semicolons = firstLine.Count(c => c == ';');
+        var tabs       = firstLine.Count(c => c == '\t');
+        var delimiter  = semicolons >= commas && semicolons >= tabs ? ";"
+                       : tabs >= commas                             ? "\t"
+                       : ",";
 
         var config = new CsvConfiguration(CultureInfo.InvariantCulture)
         {
@@ -56,7 +65,11 @@ public class CsvImportService : ICsvImportService
         if (!headers.TryGetValue("name", out int nameIdx) ||
             !headers.TryGetValue("surname", out int surnameIdx) ||
             !headers.TryGetValue("uid", out int uidIdx))
-            return new CsvImportResult([], 0);
+        {
+            var found = string.Join(", ", csv.HeaderRecord!.Select(h => $"'{h}'"));
+            throw new InvalidOperationException(
+                $"CSV must have Name, Surname and UID columns (found: {found})");
+        }
 
         var validRows = new List<StudentImportRow>();
         int invalidCount = 0;
