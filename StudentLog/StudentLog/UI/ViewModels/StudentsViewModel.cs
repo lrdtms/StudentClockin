@@ -155,7 +155,7 @@ public partial class StudentsViewModel : ObservableObject
         if (result is null)
             return;
 
-        var existing = await _studentService.GetStudentsAsync(SelectedCohort.Id);
+        var existing = await _studentService.GetStudentsAsync();
         var existingUids = new HashSet<string>(existing.Select(s => s.UID), StringComparer.OrdinalIgnoreCase);
 
         int imported = 0;
