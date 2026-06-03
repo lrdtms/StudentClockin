@@ -35,15 +35,26 @@ public class CsvImportService : ICsvImportService
         if (content.Length > 0 && content[0] == '﻿')
             content = content[1..];
 
-        // Detect delimiter: pick whichever of , ; \t appears most in the first line
+        // Detect delimiter and skip Excel's sep= hint line if present
         var firstNewline = content.IndexOf('\n');
-        var firstLine = firstNewline >= 0 ? content[..firstNewline] : content;
-        var commas     = firstLine.Count(c => c == ',');
-        var semicolons = firstLine.Count(c => c == ';');
-        var tabs       = firstLine.Count(c => c == '\t');
-        var delimiter  = semicolons >= commas && semicolons >= tabs ? ";"
-                       : tabs >= commas                             ? "\t"
-                       : ",";
+        var firstLine    = (firstNewline >= 0 ? content[..firstNewline] : content).TrimEnd('\r');
+        string delimiter;
+
+        if (firstLine.StartsWith("sep=", StringComparison.OrdinalIgnoreCase))
+        {
+            var sep = firstLine["sep=".Length..].Trim();
+            delimiter = sep.Length > 0 ? sep : ",";
+            content   = firstNewline >= 0 ? content[(firstNewline + 1)..] : string.Empty;
+        }
+        else
+        {
+            var commas     = firstLine.Count(c => c == ',');
+            var semicolons = firstLine.Count(c => c == ';');
+            var tabs       = firstLine.Count(c => c == '\t');
+            delimiter = semicolons >= commas && semicolons >= tabs ? ";"
+                      : tabs >= commas                             ? "\t"
+                      : ",";
+        }
 
         var config = new CsvConfiguration(CultureInfo.InvariantCulture)
         {
